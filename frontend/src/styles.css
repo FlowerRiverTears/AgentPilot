@@ -111,3 +111,25 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.run-tip {
+  margin-bottom: 16px;
+}
+
+.answer-block {
+  display: grid;
+  gap: 12px;
+}
+
+.answer-meta {
+  display: flex;
+  gap: 16px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.answer-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+}

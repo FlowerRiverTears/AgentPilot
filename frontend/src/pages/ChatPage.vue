@@ -1,6 +1,9 @@
 <template>
   <div class="two-column">
     <n-card title="运行任务">
+      <n-alert v-if="!agentOptions.length" type="warning" class="run-tip">
+        还没有智能体。请先到“智能体”页面创建一个，再回来运行任务。
+      </n-alert>
       <n-form label-placement="top">
         <n-form-item label="智能体">
           <n-select v-model:value="agentId" :options="agentOptions" placeholder="选择智能体" />
@@ -13,13 +16,21 @@
             placeholder="请输入任务或问题"
           />
         </n-form-item>
-        <n-button type="primary" block :loading="loading" @click="run">开始执行</n-button>
+        <n-button type="primary" block :loading="loading" :disabled="!agentOptions.length" @click="run">
+          开始执行
+        </n-button>
       </n-form>
     </n-card>
     <div class="page-grid">
       <n-card title="回答">
         <n-empty v-if="!store.lastRun" description="还没有执行结果" />
-        <div v-else>{{ store.lastRun.answer }}</div>
+        <div v-else class="answer-block">
+          <div class="answer-meta">
+            <span>状态：{{ store.lastRun.status }}</span>
+            <span>模型：{{ store.lastRun.model }}</span>
+          </div>
+          <div class="answer-text">{{ store.lastRun.answer }}</div>
+        </div>
       </n-card>
       <n-card title="执行过程">
         <n-timeline v-if="store.lastRun">
@@ -31,6 +42,7 @@
             :content="step.detail"
           />
         </n-timeline>
+        <n-empty v-else description="还没有执行记录" />
       </n-card>
       <n-card title="引用来源">
         <n-list v-if="store.lastRun?.citations.length">
@@ -70,12 +82,16 @@ async function run() {
   loading.value = true;
   try {
     await store.runAgent(agentId.value, input.value);
+    message.success("任务已执行完成");
   } finally {
     loading.value = false;
   }
 }
 
-onMounted(() => store.loadAgents());
+onMounted(async () => {
+  await store.reloadForRunPage();
+  agentId.value = store.agents[0]?.id ?? null;
+});
 
 function snippet(text: string, limit = 180) {
   const normalized = text.replace(/\s+/g, " ").trim();

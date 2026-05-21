@@ -66,6 +66,9 @@ export const useWorkspaceStore = defineStore("workspace", {
       });
       this.lastRun = response.data;
       return response.data;
+    },
+    async reloadForRunPage() {
+      await this.loadAgents();
     }
   }
 });

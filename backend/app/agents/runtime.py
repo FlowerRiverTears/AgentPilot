@@ -14,6 +14,7 @@ class AgentRuntime:
             retrieved.extend(rag_pipeline.retrieve(user_input, store.chunks.get(kb_id, []), top_k=3))
 
         context = "\n\n".join(chunk.content for chunk in retrieved)
+        model_name = agent.model or llm_gateway.default_model
         messages = [
             {"role": "system", "content": agent.system_prompt},
             {
@@ -29,12 +30,18 @@ class AgentRuntime:
         return {
             "run_id": str(uuid4()),
             "agent_id": agent.id,
+            "status": "completed",
+            "model": model_name,
             "answer": answer,
             "citations": [chunk.model_dump() for chunk in retrieved],
             "steps": [
-                {"name": "input", "status": "completed", "detail": user_input},
-                {"name": "rag.retrieve", "status": "completed", "detail": f"{len(retrieved)} chunks"},
-                {"name": "llm.chat", "status": "completed", "detail": agent.model or "default"},
+                {"name": "接收任务", "status": "完成", "detail": user_input},
+                {
+                    "name": "知识库检索",
+                    "status": "完成",
+                    "detail": f"命中 {len(retrieved)} 个文档切片",
+                },
+                {"name": "大模型生成", "status": "完成", "detail": f"使用模型：{model_name}"},
             ],
         }
 

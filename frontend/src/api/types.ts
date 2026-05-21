@@ -26,6 +26,8 @@ export interface RetrievedChunk {
 export interface RunResult {
   run_id: string;
   agent_id: string;
+  status: string;
+  model: string;
   answer: string;
   citations: RetrievedChunk[];
   steps: Array<{ name: string; status: string; detail: string }>;

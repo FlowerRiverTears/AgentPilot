@@ -71,10 +71,12 @@ npm run dev
 - FastAPI 应用入口
 - Vue 3 前端入口
 - Agent 创建和列表
+- 智能体运行页面：选择智能体、输入任务、执行并展示回答
 - 知识库创建
 - 文档上传、切块、检索测试接口
 - 检索结果展示：来源、命中文档片段、相似度分数
 - Agent Run 接口
+- Agent Run 执行过程：接收任务、知识库检索、大模型生成
 - LLM 网关和开发模式 fallback
 - RAG pipeline
 - vector embedding stub
