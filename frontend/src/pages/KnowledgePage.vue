@@ -13,11 +13,15 @@
         </n-form>
       </n-card>
       <n-card title="知识库列表">
+        <n-alert v-if="selectedKnowledgeBase" type="success" class="selected-kb-tip">
+          当前已选择：{{ selectedKnowledgeBase.name }}
+        </n-alert>
         <n-data-table
           :columns="columns"
           :data="store.knowledgeBases"
           :bordered="false"
           :row-key="rowKey"
+          :row-props="rowProps"
           @update:checked-row-keys="onChecked"
         />
       </n-card>
@@ -109,6 +113,10 @@ const kbOptions = computed(() =>
   store.knowledgeBases.map((item) => ({ label: item.name, value: item.id }))
 );
 
+const selectedKnowledgeBase = computed(() =>
+  store.knowledgeBases.find((item) => item.id === selectedKbId.value)
+);
+
 const nameStatus = computed(() => {
   if (!triedSubmit.value || form.name.trim()) {
     return undefined;
@@ -141,12 +149,12 @@ const columns: DataTableColumns<KnowledgeBase> = [
               NButton,
               {
                 size: "small",
+                type: row.id === selectedKbId.value ? "primary" : "default",
                 onClick: () => {
-                  selectedKbId.value = row.id;
-                  message.info(`已选择：${row.name}`);
+                  selectKnowledgeBase(row);
                 }
               },
-              { default: () => "选择" }
+              { default: () => (row.id === selectedKbId.value ? "已选择" : "选择") }
             ),
             h(
               NButton,
@@ -167,6 +175,19 @@ const columns: DataTableColumns<KnowledgeBase> = [
 
 function rowKey(row: KnowledgeBase) {
   return row.id;
+}
+
+function selectKnowledgeBase(row: KnowledgeBase) {
+  selectedKbId.value = row.id;
+  message.info(`已选择：${row.name}`);
+}
+
+function rowProps(row: KnowledgeBase) {
+  return {
+    class: row.id === selectedKbId.value ? "selected-row" : "",
+    style: "cursor: pointer;",
+    onClick: () => selectKnowledgeBase(row)
+  };
 }
 
 function onChecked(keys: Array<string | number>) {
@@ -284,5 +305,13 @@ onMounted(async () => {
 <style scoped>
 .action-button {
   margin-top: 16px;
+}
+
+.selected-kb-tip {
+  margin-bottom: 12px;
+}
+
+:deep(.selected-row td) {
+  background: #eef6ff;
 }
 </style>
