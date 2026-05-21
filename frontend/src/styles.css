@@ -133,3 +133,13 @@ body {
   word-break: break-word;
   line-height: 1.8;
 }
+
+.settings-page {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.settings-tip {
+  margin-bottom: 16px;
+}

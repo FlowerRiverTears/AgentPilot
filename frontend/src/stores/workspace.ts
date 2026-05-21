@@ -1,12 +1,13 @@
 import { defineStore } from "pinia";
 
 import { api } from "../api/client";
-import type { Agent, KnowledgeBase, RetrievedChunk, RunResult } from "../api/types";
+import type { Agent, KnowledgeBase, ModelConfig, RetrievedChunk, RunResult } from "../api/types";
 
 export const useWorkspaceStore = defineStore("workspace", {
   state: () => ({
     agents: [] as Agent[],
     knowledgeBases: [] as KnowledgeBase[],
+    modelConfig: null as ModelConfig | null,
     lastRun: null as RunResult | null
   }),
   actions: {
@@ -69,6 +70,20 @@ export const useWorkspaceStore = defineStore("workspace", {
     },
     async reloadForRunPage() {
       await this.loadAgents();
+    },
+    async loadModelConfig() {
+      const response = await api.get<ModelConfig>("/settings/model");
+      this.modelConfig = response.data;
+      return response.data;
+    },
+    async updateModelConfig(payload: {
+      base_url: string;
+      api_key: string;
+      default_model: string;
+    }) {
+      const response = await api.put<ModelConfig>("/settings/model", payload);
+      this.modelConfig = response.data;
+      return response.data;
     }
   }
 });

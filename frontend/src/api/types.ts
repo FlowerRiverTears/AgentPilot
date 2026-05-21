@@ -32,3 +32,9 @@ export interface RunResult {
   citations: RetrievedChunk[];
   steps: Array<{ name: string; status: string; detail: string }>;
 }
+
+export interface ModelConfig {
+  base_url: string;
+  api_key_set: boolean;
+  default_model: string;
+}

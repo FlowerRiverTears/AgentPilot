@@ -2,7 +2,10 @@
   <div class="two-column">
     <n-card title="运行任务">
       <n-alert v-if="!agentOptions.length" type="warning" class="run-tip">
-        还没有智能体。请先到“智能体”页面创建一个，再回来运行任务。
+        还没有智能体。请先到“智能体”页面创建一个。Token 请在“模型配置”页面填写。
+      </n-alert>
+      <n-alert v-else-if="store.modelConfig && !store.modelConfig.api_key_set" type="info" class="run-tip">
+        当前未配置 API Token。可以先用开发模式回答，也可以到“模型配置”页面填写自己的 Token。
       </n-alert>
       <n-form label-placement="top">
         <n-form-item label="智能体">
@@ -75,6 +78,13 @@ const loading = ref(false);
 const agentOptions = computed(() => store.agents.map((item) => ({ label: item.name, value: item.id })));
 
 async function run() {
+  await store.loadAgents();
+  if (agentId.value && !store.agents.some((agent) => agent.id === agentId.value)) {
+    agentId.value = store.agents[0]?.id ?? null;
+    message.warning("智能体列表已刷新，请重新选择后再执行");
+    return;
+  }
+
   if (!agentId.value || !input.value.trim()) {
     message.warning("请选择智能体并输入任务");
     return;
@@ -83,13 +93,22 @@ async function run() {
   try {
     await store.runAgent(agentId.value, input.value);
     message.success("任务已执行完成");
+  } catch (error) {
+    await store.loadAgents();
+    if (!store.agents.length) {
+      agentId.value = null;
+      message.error("智能体不存在或已丢失。当前第一版使用内存存储，后端重启后需要重新创建智能体。");
+      return;
+    }
+    message.error("任务执行失败，请检查智能体、模型配置或后端服务");
+    console.error(error);
   } finally {
     loading.value = false;
   }
 }
 
 onMounted(async () => {
-  await store.reloadForRunPage();
+  await Promise.all([store.reloadForRunPage(), store.loadModelConfig()]);
   agentId.value = store.agents[0]?.id ?? null;
 });
 
