@@ -6,7 +6,7 @@ from app.core.aspects import AspectMiddleware
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
-from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep
+from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool
 from app.llm.gateway import llm_gateway
 from app.repositories.memory import store
 

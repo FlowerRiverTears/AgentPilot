@@ -272,8 +272,10 @@ class DatabaseStore:
         steps: list[dict[str, str]],
         model: str,
         status: str = "completed",
+        tool_results: list[dict] | None = None,
     ) -> dict:
         citation_list = list(citations)
+        tool_result_list = tool_results or []
         async with AsyncSessionLocal() as session:
             run = AgentRun(
                 agent_id=self._uuid(agent_id),
@@ -285,6 +287,7 @@ class DatabaseStore:
                     "model": model,
                     "citation_count": len(citation_list),
                     "citations": [chunk.model_dump() for chunk in citation_list],
+                    "tool_results": tool_result_list,
                 },
             )
             session.add(run)
@@ -310,6 +313,7 @@ class DatabaseStore:
                 "answer": answer,
                 "citations": [chunk.model_dump() for chunk in citation_list],
                 "steps": steps,
+                "tool_results": tool_result_list,
             }
 
     async def list_runs(self, limit: int = 50) -> list[AgentRunSummary]:

@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 
 from app.llm.gateway import llm_gateway
 from app.repositories.memory import store
+from app.repositories.tools import tool_store
 from app.schemas.agents import AgentRead
 from app.tools import tool_registry
 
@@ -9,13 +10,18 @@ from app.tools import tool_registry
 class AgentRuntime:
     async def run(self, agent: AgentRead, user_input: str) -> dict:
         retrieved = await store.retrieve_for_agent(agent.id, user_input, top_k=3)
-        tool_results = await tool_registry.run_for_input(agent.tool_ids, user_input)
+        database_tool_results = await tool_store.run_for_input(agent.tool_ids, user_input)
+        fallback_tool_results = await tool_registry.run_for_input(agent.tool_ids, user_input)
         model_config_id = agent.model_config_id
 
         context = "\n\n".join(chunk.content for chunk in retrieved)
         tool_context = "\n\n".join(
-            f"工具：{result.name}\n结果：\n{result.content}" for result in tool_results
+            f"工具：{result['name']}\n结果：\n{result['content']}" for result in database_tool_results
         )
+        if not tool_context and fallback_tool_results:
+            tool_context = "\n\n".join(
+                f"工具：{result.name}\n结果：\n{result.content}" for result in fallback_tool_results
+            )
         model_name = agent.model or llm_gateway.default_model
         messages = [
             {"role": "system", "content": agent.system_prompt},
@@ -55,7 +61,7 @@ class AgentRuntime:
             {
                 "name": "应用工具调用",
                 "status": "完成",
-                "detail": f"调用 {len(tool_results)} 个工具",
+                "detail": f"调用 {len(database_tool_results) + len(fallback_tool_results)} 个工具",
             },
             {"name": "大模型生成", "status": generation_status, "detail": f"使用模型：{model_name}"},
         ]
@@ -66,6 +72,15 @@ class AgentRuntime:
             citations=retrieved,
             steps=steps,
             model=model_name,
+            tool_results=database_tool_results
+            + [
+                {
+                    "tool_id": result.tool_id,
+                    "name": result.name,
+                    "content": result.content,
+                }
+                for result in fallback_tool_results
+            ],
         )
 
     async def stream(self, agent: AgentRead, user_input: str) -> AsyncIterator[str]:
