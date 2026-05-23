@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import AsyncSessionLocal
 from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep
 from app.rag.pipeline import rag_pipeline
-from app.schemas.agents import AgentCreate, AgentRead
+from app.schemas.agents import AgentCreate, AgentRead, AgentRunDetail, AgentRunSummary, AgentUpdate
 from app.schemas.knowledge import KnowledgeBaseCreate, KnowledgeBaseRead, RetrievedChunk
 from app.vector.embeddings import embedding_service
 from app.llm.gateway import llm_gateway
@@ -22,18 +22,21 @@ class DatabaseStore:
 
     async def list_agents(self) -> list[AgentRead]:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(Agent).order_by(Agent.created_at.desc()))
+            result = await session.execute(
+                select(Agent).where(Agent.status != "deleted").order_by(Agent.created_at.desc())
+            )
+            return [self._agent_to_read(agent) for agent in result.scalars().all()]
+
+    async def list_published_agents(self) -> list[AgentRead]:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Agent).where(Agent.status == "published").order_by(Agent.created_at.desc())
+            )
             return [self._agent_to_read(agent) for agent in result.scalars().all()]
 
     async def create_agent(self, payload: AgentCreate) -> AgentRead:
         async with AsyncSessionLocal() as session:
-            model_config_id = payload.model_config_id
-            if not model_config_id:
-                default_config = await llm_gateway.get_config()
-                model_config_id = default_config.id
-            elif not await llm_gateway.get_config_by_id(model_config_id):
-                default_config = await llm_gateway.get_config()
-                model_config_id = default_config.id
+            model_config_id = await self._resolve_model_config_id(payload.model_config_id)
             agent = Agent(
                 name=payload.name,
                 description=payload.description,
@@ -51,13 +54,82 @@ class DatabaseStore:
             await session.refresh(agent)
             return self._agent_to_read(agent)
 
+    async def update_agent(self, agent_id: str, payload: AgentUpdate) -> AgentRead | None:
+        agent_uuid = self._maybe_uuid(agent_id)
+        if not agent_uuid:
+            return None
+        async with AsyncSessionLocal() as session:
+            agent = await session.get(Agent, agent_uuid)
+            if not agent or agent.status == "deleted":
+                return None
+
+            model_config_id = await self._resolve_model_config_id(payload.model_config_id)
+            agent.name = payload.name
+            agent.description = payload.description
+            agent.system_prompt = payload.system_prompt
+            agent.model = payload.model
+            agent.config = {
+                "model_config_id": model_config_id,
+                "knowledge_base_ids": payload.knowledge_base_ids,
+                "tool_ids": payload.tool_ids,
+            }
+            await session.commit()
+            await session.refresh(agent)
+            return self._agent_to_read(agent)
+
+    async def set_agent_status(self, agent_id: str, status: str) -> AgentRead | None:
+        agent_uuid = self._maybe_uuid(agent_id)
+        if not agent_uuid:
+            return None
+        async with AsyncSessionLocal() as session:
+            agent = await session.get(Agent, agent_uuid)
+            if not agent or agent.status == "deleted":
+                return None
+            agent.status = status
+            await session.commit()
+            await session.refresh(agent)
+            return self._agent_to_read(agent)
+
+    async def delete_agent(self, agent_id: str) -> bool:
+        agent_uuid = self._maybe_uuid(agent_id)
+        if not agent_uuid:
+            return False
+        async with AsyncSessionLocal() as session:
+            agent = await session.get(Agent, agent_uuid)
+            if not agent or agent.status == "deleted":
+                return False
+            agent.status = "deleted"
+            await session.commit()
+            return True
+
+    async def duplicate_agent(self, agent_id: str) -> AgentRead | None:
+        agent_uuid = self._maybe_uuid(agent_id)
+        if not agent_uuid:
+            return None
+        async with AsyncSessionLocal() as session:
+            agent = await session.get(Agent, agent_uuid)
+            if not agent or agent.status == "deleted":
+                return None
+            copy = Agent(
+                name=f"{agent.name} 副本",
+                description=agent.description,
+                system_prompt=agent.system_prompt,
+                model=agent.model,
+                status="draft",
+                config=dict(agent.config or {}),
+            )
+            session.add(copy)
+            await session.commit()
+            await session.refresh(copy)
+            return self._agent_to_read(copy)
+
     async def get_agent(self, agent_id: str) -> AgentRead | None:
         agent_uuid = self._maybe_uuid(agent_id)
         if not agent_uuid:
             return None
         async with AsyncSessionLocal() as session:
             agent = await session.get(Agent, agent_uuid)
-            if not agent:
+            if not agent or agent.status == "deleted":
                 return None
             return self._agent_to_read(agent)
 
@@ -209,7 +281,11 @@ class DatabaseStore:
                 input=user_input,
                 output=answer,
                 trace_id=str(uuid4()),
-                usage={"model": model, "citation_count": len(citation_list)},
+                usage={
+                    "model": model,
+                    "citation_count": len(citation_list),
+                    "citations": [chunk.model_dump() for chunk in citation_list],
+                },
             )
             session.add(run)
             await session.flush()
@@ -235,6 +311,32 @@ class DatabaseStore:
                 "citations": [chunk.model_dump() for chunk in citation_list],
                 "steps": steps,
             }
+
+    async def list_runs(self, limit: int = 50) -> list[AgentRunSummary]:
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(AgentRun, Agent.name)
+                .outerjoin(Agent, Agent.id == AgentRun.agent_id)
+                .order_by(AgentRun.created_at.desc())
+                .limit(limit)
+            )
+            rows = await session.execute(stmt)
+            return [self._run_to_summary(run, agent_name) for run, agent_name in rows.all()]
+
+    async def get_run(self, run_id: str) -> AgentRunDetail | None:
+        run_uuid = self._maybe_uuid(run_id)
+        if not run_uuid:
+            return None
+        async with AsyncSessionLocal() as session:
+            stmt = select(AgentRun, Agent.name).outerjoin(Agent, Agent.id == AgentRun.agent_id).where(AgentRun.id == run_uuid)
+            row = (await session.execute(stmt)).first()
+            if not row:
+                return None
+            run, agent_name = row
+            step_rows = (
+                await session.execute(select(RunStep).where(RunStep.run_id == run.id).order_by(RunStep.created_at.asc()))
+            ).scalars().all()
+            return self._run_to_detail(run, agent_name, step_rows)
 
     async def _seed_defaults(self, session: AsyncSession) -> None:
         kb_count = await session.scalar(select(func.count()).select_from(KnowledgeBase))
@@ -293,6 +395,15 @@ class DatabaseStore:
 
         await session.commit()
 
+    async def _resolve_model_config_id(self, model_config_id: str | None) -> str:
+        if not model_config_id:
+            default_config = await llm_gateway.get_config()
+            return default_config.id
+        if not await llm_gateway.get_config_by_id(model_config_id):
+            default_config = await llm_gateway.get_config()
+            return default_config.id
+        return model_config_id
+
     def _agent_to_read(self, agent: Agent) -> AgentRead:
         config = agent.config or {}
         return AgentRead(
@@ -313,6 +424,37 @@ class DatabaseStore:
             name=kb.name,
             description=kb.description,
             document_count=int(document_count or 0),
+        )
+
+    def _run_to_summary(self, run: AgentRun, agent_name: str | None) -> AgentRunSummary:
+        usage = run.usage or {}
+        return AgentRunSummary(
+            run_id=str(run.id),
+            agent_id=str(run.agent_id),
+            agent_name=agent_name or "未知智能体",
+            status=run.status,
+            input=run.input,
+            model=str(usage.get("model", "")),
+            trace_id=run.trace_id,
+            created_at=run.created_at.isoformat(),
+        )
+
+    def _run_to_detail(self, run: AgentRun, agent_name: str | None, steps: list[RunStep]) -> AgentRunDetail:
+        usage = run.usage or {}
+        summary = self._run_to_summary(run, agent_name)
+        return AgentRunDetail(
+            **summary.model_dump(),
+            answer=run.output or "",
+            citations=list(usage.get("citations", [])),
+            steps=[
+                {
+                    "name": step.name,
+                    "status": step.status,
+                    "detail": str((step.detail or {}).get("detail", "")),
+                }
+                for step in steps
+            ],
+            usage=usage,
         )
 
     def _uuid(self, value: str) -> UUID:
