@@ -4,6 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.aspects import AspectMiddleware
 from app.core.config import settings
+from app.db.base import Base
+from app.db.session import engine
+from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep
+from app.llm.gateway import llm_gateway
+from app.repositories.memory import store
 
 
 def create_app() -> FastAPI:
@@ -23,6 +28,14 @@ def create_app() -> FastAPI:
     app.add_middleware(AspectMiddleware)
 
     app.include_router(api_router, prefix=settings.api_prefix)
+
+    @app.on_event("startup")
+    async def startup() -> None:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await store.initialize()
+        await llm_gateway.ensure_defaults()
+
     return app
 
 

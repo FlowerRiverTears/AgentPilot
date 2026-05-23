@@ -28,11 +28,30 @@
     </div>
 
     <div class="two-column">
-      <n-card title="上传文档">
+      <n-card title="导入文档">
+        <n-alert type="info" class="selected-kb-tip">
+          可以直接选择内置标准文档导入知识库，也可以上传自己的 Markdown 或文本文件。
+        </n-alert>
         <n-form label-placement="top">
           <n-form-item label="知识库">
             <n-select v-model:value="selectedKbId" :options="kbOptions" placeholder="选择知识库" />
           </n-form-item>
+          <n-form-item label="示例文档">
+            <n-select
+              v-model:value="selectedSampleDocumentId"
+              :options="sampleDocumentOptions"
+              placeholder="选择一份内置示例文档"
+            />
+          </n-form-item>
+          <n-button
+            type="primary"
+            block
+            :loading="importingSample"
+            @click="importSample"
+          >
+            导入示例文档
+          </n-button>
+          <n-divider>或上传本地文本</n-divider>
           <n-upload :max="1" :default-upload="false" @change="onFileChange">
             <n-button>选择文本文件</n-button>
           </n-upload>
@@ -102,8 +121,10 @@ const store = useWorkspaceStore();
 const form = reactive({ name: "", description: "" });
 const creating = ref(false);
 const uploading = ref(false);
+const importingSample = ref(false);
 const retrieving = ref(false);
 const selectedKbId = ref<string | null>(null);
+const selectedSampleDocumentId = ref<string | null>(null);
 const selectedFile = ref<File | null>(null);
 const query = ref("");
 const retrieved = ref<RetrievedChunk[]>([]);
@@ -115,6 +136,13 @@ const kbOptions = computed(() =>
 
 const selectedKnowledgeBase = computed(() =>
   store.knowledgeBases.find((item) => item.id === selectedKbId.value)
+);
+
+const sampleDocumentOptions = computed(() =>
+  store.sampleDocuments.map((item) => ({
+    label: `${item.title}（${item.filename}）`,
+    value: item.id
+  }))
 );
 
 const nameStatus = computed(() => {
@@ -255,6 +283,28 @@ async function upload() {
   }
 }
 
+async function importSample() {
+  if (!selectedKbId.value) {
+    message.warning("请先选择知识库");
+    return;
+  }
+  if (!selectedSampleDocumentId.value) {
+    message.warning("请先选择示例文档");
+    return;
+  }
+
+  importingSample.value = true;
+  try {
+    const chunks = await store.importSampleDocument(selectedKbId.value, selectedSampleDocumentId.value);
+    message.success(`导入成功，生成 ${chunks.length} 个切片`);
+  } catch (error) {
+    message.error("导入失败，请检查后端服务");
+    console.error(error);
+  } finally {
+    importingSample.value = false;
+  }
+}
+
 async function retrieve() {
   if (!selectedKbId.value) {
     message.warning("请先选择知识库");
@@ -297,8 +347,9 @@ function confirmDelete(row: KnowledgeBase) {
 }
 
 onMounted(async () => {
-  await store.loadKnowledgeBases();
+  await Promise.all([store.loadKnowledgeBases(), store.loadSampleDocuments()]);
   selectedKbId.value = store.knowledgeBases[0]?.id ?? null;
+  selectedSampleDocumentId.value = store.sampleDocuments[0]?.id ?? null;
 });
 </script>
 

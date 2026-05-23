@@ -1,12 +1,24 @@
 import { defineStore } from "pinia";
 
 import { api } from "../api/client";
-import type { Agent, KnowledgeBase, ModelConfig, RetrievedChunk, RunResult } from "../api/types";
+import type {
+  Agent,
+  KnowledgeBase,
+  ModelConfig,
+  ModelConfigTestResult,
+  RetrievedChunk,
+  RunResult,
+  SampleDocument,
+  ToolDefinition
+} from "../api/types";
 
 export const useWorkspaceStore = defineStore("workspace", {
   state: () => ({
     agents: [] as Agent[],
     knowledgeBases: [] as KnowledgeBase[],
+    sampleDocuments: [] as SampleDocument[],
+    tools: [] as ToolDefinition[],
+    modelConfigs: [] as ModelConfig[],
     modelConfig: null as ModelConfig | null,
     lastRun: null as RunResult | null
   }),
@@ -20,6 +32,7 @@ export const useWorkspaceStore = defineStore("workspace", {
       description: string;
       system_prompt: string;
       model?: string;
+      model_config_id?: string | null;
       knowledge_base_ids: string[];
       tool_ids?: string[];
     }) {
@@ -53,6 +66,22 @@ export const useWorkspaceStore = defineStore("workspace", {
       await this.loadKnowledgeBases();
       return response.data;
     },
+    async loadSampleDocuments() {
+      const response = await api.get<SampleDocument[]>("/knowledge-bases/sample-documents");
+      this.sampleDocuments = response.data;
+    },
+    async loadTools() {
+      const response = await api.get<ToolDefinition[]>("/tools");
+      this.tools = response.data;
+      return response.data;
+    },
+    async importSampleDocument(kbId: string, documentId: string) {
+      const response = await api.post<RetrievedChunk[]>(
+        `/knowledge-bases/${kbId}/sample-documents/${documentId}`
+      );
+      await this.loadKnowledgeBases();
+      return response.data;
+    },
     async retrieveKnowledge(kbId: string, query: string, topK = 5) {
       const response = await api.post<RetrievedChunk[]>(`/knowledge-bases/${kbId}/retrieve-test`, {
         query,
@@ -76,12 +105,61 @@ export const useWorkspaceStore = defineStore("workspace", {
       this.modelConfig = response.data;
       return response.data;
     },
+    async loadModelConfigs() {
+      const response = await api.get<ModelConfig[]>("/settings/models");
+      this.modelConfigs = response.data;
+      this.modelConfig = response.data.find((item) => item.is_default) ?? response.data[0] ?? null;
+      return response.data;
+    },
+    async createModelConfig(payload: {
+      name: string;
+      base_url: string;
+      api_key: string;
+      default_model: string;
+      is_default: boolean;
+    }) {
+      const response = await api.post<ModelConfig>("/settings/models", payload);
+      await this.loadModelConfigs();
+      return response.data;
+    },
+    async updateNamedModelConfig(
+      configId: string,
+      payload: {
+        name: string;
+        base_url: string;
+        api_key: string;
+        default_model: string;
+        is_default: boolean;
+      }
+    ) {
+      const response = await api.put<ModelConfig>(`/settings/models/${configId}`, payload);
+      await this.loadModelConfigs();
+      return response.data;
+    },
+    async setDefaultModelConfig(configId: string) {
+      const response = await api.post<ModelConfig>(`/settings/models/${configId}/default`);
+      await this.loadModelConfigs();
+      return response.data;
+    },
+    async testModelConfig(configId: string) {
+      const response = await api.post<ModelConfigTestResult>(`/settings/models/${configId}/test`);
+      return response.data;
+    },
+    async deleteModelConfig(configId: string) {
+      await api.delete(`/settings/models/${configId}`);
+      await this.loadModelConfigs();
+    },
     async updateModelConfig(payload: {
+      name?: string;
       base_url: string;
       api_key: string;
       default_model: string;
     }) {
-      const response = await api.put<ModelConfig>("/settings/model", payload);
+      const response = await api.put<ModelConfig>("/settings/model", {
+        name: payload.name ?? "default",
+        ...payload,
+        is_default: true
+      });
       this.modelConfig = response.data;
       return response.data;
     }

@@ -4,6 +4,7 @@ export interface Agent {
   description: string;
   system_prompt: string;
   model?: string | null;
+  model_config_id?: string | null;
   knowledge_base_ids: string[];
   tool_ids: string[];
   status: string;
@@ -23,6 +24,18 @@ export interface RetrievedChunk {
   source: string;
 }
 
+export interface SampleDocument {
+  id: string;
+  title: string;
+  filename: string;
+}
+
+export interface ToolDefinition {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface RunResult {
   run_id: string;
   agent_id: string;
@@ -34,7 +47,15 @@ export interface RunResult {
 }
 
 export interface ModelConfig {
+  id: string;
+  name: string;
   base_url: string;
   api_key_set: boolean;
   default_model: string;
+  is_default: boolean;
+}
+
+export interface ModelConfigTestResult {
+  ok: boolean;
+  message: string;
 }

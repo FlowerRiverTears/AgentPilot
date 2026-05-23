@@ -6,6 +6,7 @@ class AgentCreate(BaseModel):
     description: str = ""
     system_prompt: str = "You are a useful enterprise AI agent."
     model: str | None = None
+    model_config_id: str | None = None
     knowledge_base_ids: list[str] = Field(default_factory=list)
     tool_ids: list[str] = Field(default_factory=list)
 

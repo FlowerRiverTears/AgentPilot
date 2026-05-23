@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: str = "ollama"
     llm_default_model: str = "qwen2.5:7b"
+    llm_request_timeout_seconds: int = 120
     embedding_model: str = "bge-m3"
 
 

@@ -32,7 +32,12 @@
             <span>状态：{{ store.lastRun.status }}</span>
             <span>模型：{{ store.lastRun.model }}</span>
           </div>
-          <div class="answer-text">{{ store.lastRun.answer }}</div>
+          <div class="answer-render">
+            <template v-for="(part, index) in answerParts" :key="index">
+              <pre v-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
+              <div v-else class="answer-text">{{ part.content }}</div>
+            </template>
+          </div>
         </div>
       </n-card>
       <n-card title="执行过程">
@@ -68,6 +73,7 @@ import { computed, onMounted, ref } from "vue";
 import { useMessage } from "naive-ui";
 
 import { useWorkspaceStore } from "../stores/workspace";
+import { cleanAnswerText, parseAnswerParts } from "../utils/answerFormat";
 
 const message = useMessage();
 const store = useWorkspaceStore();
@@ -119,4 +125,7 @@ function snippet(text: string, limit = 180) {
   }
   return `${normalized.slice(0, limit)}...`;
 }
+
+const answerText = computed(() => cleanAnswerText(store.lastRun?.answer ?? ""));
+const answerParts = computed(() => parseAnswerParts(store.lastRun?.answer ?? ""));
 </script>
