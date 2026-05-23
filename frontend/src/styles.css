@@ -575,6 +575,36 @@ body {
   flex: 1;
 }
 
+.form-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.tool-form-section {
+  margin-bottom: 18px;
+}
+
+.tool-form-section h3 {
+  margin: 0 0 12px;
+  color: var(--text-strong);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.tool-inline-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 12px;
+}
+
+.tool-status-field {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
 @media (max-width: 900px) {
   .portal-topbar {
     padding: 0 16px;
@@ -599,6 +629,10 @@ body {
   }
 
   .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-inline-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -9,7 +9,9 @@ import type {
   RetrievedChunk,
   RunResult,
   SampleDocument,
-  ToolDefinition
+  ToolDefinition,
+  ToolPayload,
+  ToolTestResult
 } from "../api/types";
 
 export const useWorkspaceStore = defineStore("workspace", {
@@ -73,6 +75,24 @@ export const useWorkspaceStore = defineStore("workspace", {
     async loadTools() {
       const response = await api.get<ToolDefinition[]>("/tools");
       this.tools = response.data;
+      return response.data;
+    },
+    async createTool(payload: ToolPayload) {
+      const response = await api.post<ToolDefinition>("/tools", payload);
+      this.tools.unshift(response.data);
+      return response.data;
+    },
+    async updateTool(toolId: string, payload: ToolPayload) {
+      const response = await api.put<ToolDefinition>(`/tools/${toolId}`, payload);
+      this.tools = this.tools.map((item) => (item.id === toolId ? response.data : item));
+      return response.data;
+    },
+    async deleteTool(toolId: string) {
+      await api.delete(`/tools/${toolId}`);
+      this.tools = this.tools.filter((item) => item.id !== toolId);
+    },
+    async testTool(toolId: string, input: Record<string, unknown> = {}) {
+      const response = await api.post<ToolTestResult>(`/tools/${toolId}/test`, { input });
       return response.data;
     },
     async importSampleDocument(kbId: string, documentId: string) {

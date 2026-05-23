@@ -1,37 +1,37 @@
 <template>
   <div class="page-grid">
-    <n-page-header title="总览" subtitle="AgentPilot 第一版控制台" />
+    <n-page-header title="总览" subtitle="AgentPilot 第二版推进中" />
 
     <div class="metrics">
-      <n-card title="模型">
-        <div class="metric-value">已接入</div>
-        <div class="muted">多模型配置 / 连通性测试</div>
+      <n-card title="第二版总进度">
+        <div class="metric-value">推进中</div>
+        <div class="muted">第一版已完成，当前推进第二版</div>
       </n-card>
-      <n-card title="知识库">
-        <div class="metric-value">已完成</div>
-        <div class="muted">上传、切块、检索、引用</div>
+      <n-card title="智能体管理">
+        <div class="metric-value">完成</div>
+        <div class="muted">编辑、发布、复制、删除</div>
       </n-card>
-      <n-card title="智能体">
-        <div class="metric-value">已完成</div>
-        <div class="muted">创建、绑定、运行、追踪</div>
+      <n-card title="运行历史">
+        <div class="metric-value">完成</div>
+        <div class="muted">列表、详情、引用、步骤</div>
       </n-card>
-      <n-card title="前台">
-        <div class="metric-value">已上线</div>
-        <div class="muted">独立体验页 / 用户对话</div>
+      <n-card title="工具系统">
+        <div class="metric-value">推进中</div>
+        <div class="muted">HTTP 工具基础闭环</div>
       </n-card>
     </div>
 
-    <n-card title="第一版验收状态">
-      <n-steps :current="4" status="finish">
-        <n-step title="项目骨架" description="FastAPI + Vue + Docker Compose" />
-        <n-step title="知识库检索" description="创建知识库、上传文档、检索测试、引用来源" />
-        <n-step title="智能体运行" description="创建智能体、绑定模型/知识库/工具、执行任务" />
-        <n-step title="前台体验" description="独立前台、回答格式、深色亮色、使用教程" />
+    <n-card title="第二版进度">
+      <n-steps :current="3" status="process">
+        <n-step title="智能体管理" description="编辑、发布、下线、复制、软删除" />
+        <n-step title="运行历史" description="Run 列表和详情页" />
+        <n-step title="工具系统" description="HTTP 工具创建、测试和运行时调用" />
+        <n-step title="权限和流式" description="登录鉴权、前台流式输出" />
       </n-steps>
     </n-card>
 
     <div class="dashboard-grid">
-      <n-card title="已实现链路">
+      <n-card title="第二版已完成">
         <n-list>
           <n-list-item v-for="item in completedItems" :key="item">
             <n-thing :title="item" />
@@ -45,6 +45,8 @@
           <n-button secondary @click="router.push('/settings/model')">配置模型</n-button>
           <n-button secondary @click="router.push('/knowledge')">管理知识库</n-button>
           <n-button secondary @click="router.push('/agents')">创建智能体</n-button>
+          <n-button secondary @click="router.push('/tools')">工具管理</n-button>
+          <n-button secondary @click="router.push('/runs')">运行历史</n-button>
           <n-button secondary @click="router.push('/portal')">进入前台</n-button>
         </div>
       </n-card>
@@ -67,6 +69,10 @@ const completedItems = [
   "智能体绑定模型、知识库和应用工具",
   "执行任务并展示回答、引用来源和执行轨迹",
   "独立前台体验页",
-  "Docker Compose 一键启动和说明文档"
+  "Docker Compose 一键启动和说明文档",
+  "智能体编辑、发布、下线、复制、软删除",
+  "前台只展示已发布智能体",
+  "运行历史列表和详情页",
+  "HTTP 工具创建、测试和运行时调用"
 ];
 </script>

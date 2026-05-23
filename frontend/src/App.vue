@@ -52,6 +52,7 @@ const menuOptions = [
     label: () => h(RouterLink, { to: "/knowledge" }, { default: () => "知识库" }),
     key: "/knowledge"
   },
+  { label: () => h(RouterLink, { to: "/tools" }, { default: () => "工具管理" }), key: "/tools" },
   {
     label: () => h(RouterLink, { to: "/settings/model" }, { default: () => "模型配置" }),
     key: "/settings/model"

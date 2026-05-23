@@ -33,7 +33,36 @@ export interface SampleDocument {
 export interface ToolDefinition {
   id: string;
   name: string;
+  type: string;
   description: string;
+  config: HttpToolConfig;
+  enabled: boolean;
+}
+
+export interface HttpToolConfig {
+  url: string;
+  method: "GET" | "POST";
+  trigger_keywords: string[];
+  headers: Record<string, string>;
+  query: Record<string, unknown>;
+  body: Record<string, unknown>;
+  timeout_seconds: number;
+}
+
+export interface ToolPayload {
+  name: string;
+  type: "http";
+  description: string;
+  config: HttpToolConfig;
+  enabled: boolean;
+}
+
+export interface ToolTestResult {
+  ok: boolean;
+  status_code?: number | null;
+  elapsed_ms: number;
+  output?: unknown;
+  error: string;
 }
 
 export interface RunResult {
