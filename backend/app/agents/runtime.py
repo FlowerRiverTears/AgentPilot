@@ -6,10 +6,17 @@ from app.llm.gateway import llm_gateway
 from app.repositories.memory import store
 from app.repositories.tools import tool_store
 from app.schemas.agents import AgentRead
+from app.schemas.knowledge import RetrievedChunk
 from app.tools import tool_registry
 
 
 class AgentRuntime:
+    def _format_context(self, retrieved: list[RetrievedChunk]) -> str:
+        return "\n\n".join(
+            f"[来源：{chunk.source}，相似度：{chunk.score:.3f}]\n{chunk.content}"
+            for chunk in retrieved
+        )
+
     def _build_messages(
         self,
         agent: AgentRead,
@@ -59,7 +66,7 @@ class AgentRuntime:
         fallback_tool_results = await tool_registry.run_for_input(agent.tool_ids, user_input)
         model_config_id = agent.model_config_id
 
-        context = "\n\n".join(chunk.content for chunk in retrieved)
+        context = self._format_context(retrieved)
         tool_context = "\n\n".join(
             f"工具：{result['name']}\n结果：\n{result['content']}" for result in database_tool_results
         )
@@ -124,7 +131,7 @@ class AgentRuntime:
         fallback_tool_results = await tool_registry.run_for_input(agent.tool_ids, user_input)
         model_config_id = agent.model_config_id
 
-        context = "\n\n".join(chunk.content for chunk in retrieved)
+        context = self._format_context(retrieved)
         tool_context = "\n\n".join(
             f"工具：{result['name']}\n结果：\n{result['content']}" for result in database_tool_results
         )

@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool
 from app.rag.pipeline import rag_pipeline
+from app.rag.relevance import lexical_relevance
+from app.rag.text_quality import is_readable_text
 from app.schemas.agents import AgentCreate, AgentRead, AgentRunDetail, AgentRunSummary, AgentUpdate
 from app.schemas.knowledge import KnowledgeBaseCreate, KnowledgeBaseRead, RetrievedChunk
 from app.vector.embeddings import embedding_service
@@ -21,6 +23,7 @@ class DatabaseStore:
         async with AsyncSessionLocal() as session:
             await self._seed_defaults(session)
             await self._backfill_agent_model_configs(session)
+            await self._cleanup_unreadable_chunks(session)
 
     async def list_agents(self) -> list[AgentRead]:
         async with AsyncSessionLocal() as session:
@@ -198,6 +201,8 @@ class DatabaseStore:
         if not kb_uuid:
             return []
         chunks = rag_pipeline.build_chunks(filename, text)
+        if not chunks:
+            raise ValueError("No readable chunks were generated from this document")
         async with AsyncSessionLocal() as session:
             kb = await session.get(KnowledgeBase, kb_uuid)
             if not kb:
@@ -246,18 +251,33 @@ class DatabaseStore:
                 .join(Document, Document.id == DocumentChunk.document_id)
                 .where(Document.knowledge_base_id == kb_uuid)
                 .order_by(text("distance ASC"))
-                .limit(top_k)
             )
             rows = await session.execute(stmt)
-            return [
-                RetrievedChunk(
-                    chunk_id=str(chunk_id),
-                    content=content,
-                    score=round(1.0 - distance, 6),
-                    source=source,
+            chunks: list[RetrievedChunk] = []
+            seen_contents: set[str] = set()
+            for chunk_id, content, source, distance in rows.all():
+                vector_score = round(1.0 - distance, 6)
+                lexical_score = lexical_relevance(query, content)
+                score = max(vector_score, lexical_score)
+                if (
+                    vector_score < settings.retrieval_min_score
+                    and lexical_score < settings.retrieval_min_lexical_score
+                ) or not is_readable_text(content):
+                    continue
+                normalized_content = " ".join(content.split())
+                if normalized_content in seen_contents:
+                    continue
+                seen_contents.add(normalized_content)
+                chunks.append(
+                    RetrievedChunk(
+                        chunk_id=str(chunk_id),
+                        content=content,
+                        score=score,
+                        source=source,
+                    )
                 )
-                for chunk_id, content, source, distance in rows.all()
-            ]
+            chunks.sort(key=lambda item: item.score, reverse=True)
+            return chunks[:top_k]
 
     async def retrieve_for_agent(self, agent_id: str, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         agent = await self.get_agent(agent_id)
@@ -279,7 +299,15 @@ class DatabaseStore:
                 all_chunks.extend(kb_chunks)
 
         all_chunks.sort(key=lambda item: item.score, reverse=True)
-        return all_chunks[:top_k]
+        deduped: list[RetrievedChunk] = []
+        seen_contents: set[str] = set()
+        for chunk in all_chunks:
+            normalized_content = " ".join(chunk.content.split())
+            if normalized_content in seen_contents:
+                continue
+            seen_contents.add(normalized_content)
+            deduped.append(chunk)
+        return deduped[:top_k]
 
     async def create_run(
         self,
@@ -511,6 +539,13 @@ class DatabaseStore:
                 agent.config = config
                 changed = True
         if changed:
+            await session.commit()
+
+    async def _cleanup_unreadable_chunks(self, session: AsyncSession) -> None:
+        rows = (await session.execute(select(DocumentChunk.id, DocumentChunk.content))).all()
+        unreadable_ids = [chunk_id for chunk_id, content in rows if not is_readable_text(content)]
+        if unreadable_ids:
+            await session.execute(delete(DocumentChunk).where(DocumentChunk.id.in_(unreadable_ids)))
             await session.commit()
 
     async def _resolve_model_config_id(self, model_config_id: str | None) -> str:

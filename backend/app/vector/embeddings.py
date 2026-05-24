@@ -34,8 +34,8 @@ class EmbeddingService:
                 embedding = data["data"][0]["embedding"]
                 self.dimensions = len(embedding)
                 return embedding
-        except Exception:
-            logger.warning("Remote embedding failed, falling back to local stub", exc_info=True)
+        except Exception as exc:
+            logger.warning("Remote embedding failed, falling back to local stub: %s", exc)
             return self._local_embed(text)
 
     def _local_embed(self, text: str) -> list[float]:

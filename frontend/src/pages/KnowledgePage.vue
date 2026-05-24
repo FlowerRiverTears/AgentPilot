@@ -30,7 +30,7 @@
     <div class="two-column">
       <n-card title="导入文档">
         <n-alert type="info" class="selected-kb-tip">
-          可以直接选择内置标准文档导入知识库，也可以上传自己的 Markdown 或文本文件。
+          可以直接选择内置标准文档导入知识库，也可以上传自己的 PDF、Markdown 或文本文件。
         </n-alert>
         <n-form label-placement="top">
           <n-form-item label="知识库">
@@ -51,9 +51,9 @@
           >
             导入示例文档
           </n-button>
-          <n-divider>或上传本地文本</n-divider>
+          <n-divider>或上传本地文档</n-divider>
           <n-upload :max="1" :default-upload="false" @change="onFileChange">
-            <n-button>选择文本文件</n-button>
+            <n-button>选择文档</n-button>
           </n-upload>
           <n-button
             class="action-button"

@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import { useRouter } from "vue-router";
 
@@ -138,6 +138,15 @@ interface PortalMessage {
   citations?: RetrievedChunk[];
   streaming?: boolean;
 }
+
+interface PortalConversationState {
+  selectedAgentId: string | null;
+  messages: PortalMessage[];
+  chatHistory: ChatMessage[];
+}
+
+const STORAGE_KEY = "agentpilot-portal-conversation";
+const MAX_STORED_MESSAGES = 60;
 
 const message = useMessage();
 const router = useRouter();
@@ -159,6 +168,7 @@ const selectedAgent = computed(
 
 function selectAgent(agentId: string) {
   selectedAgentId.value = agentId;
+  persistConversation();
   scrollToBottom();
 }
 
@@ -171,7 +181,9 @@ async function refreshAgents() {
   try {
     await store.loadPublishedAgents();
     if (!selectedAgent.value) {
-      selectedAgentId.value = publishedAgents.value[0]?.id ?? null;
+      selectedAgentId.value = publishedAgents.value.some((agent) => agent.id === selectedAgentId.value)
+        ? selectedAgentId.value
+        : publishedAgents.value[0]?.id ?? null;
     }
   } finally {
     loadingAgents.value = false;
@@ -207,9 +219,11 @@ async function send() {
     content,
     parts: [{ type: "text", content }]
   });
+  persistConversation();
   scrollToBottom();
 
   chatHistory.value.push({ role: "user", content });
+  persistConversation();
 
   sending.value = true;
   const assistantMsg: PortalMessage = {
@@ -223,6 +237,7 @@ async function send() {
     streaming: true
   };
   messages.value.push(assistantMsg);
+  persistConversation();
   scrollToBottom();
 
   try {
@@ -277,6 +292,7 @@ async function send() {
               assistantMsg.streaming = false;
               chatHistory.value.push({ role: "assistant", content: fullAnswer });
               trimHistory();
+              persistConversation();
             } catch { /* ignore */ }
           }
           continue;
@@ -290,6 +306,7 @@ async function send() {
               const parsed = splitThinking(fullAnswer);
               assistantMsg.parts = parsed.parts;
               assistantMsg.thinking = parsed.thinking;
+              persistConversation();
               scrollToBottom();
             }
           } catch { /* ignore */ }
@@ -306,12 +323,14 @@ async function send() {
       if (fullAnswer) {
         chatHistory.value.push({ role: "assistant", content: fullAnswer });
         trimHistory();
+        persistConversation();
       }
     }
   } catch (error) {
     assistantMsg.streaming = false;
     assistantMsg.content = "智能体暂时无法回复，请检查后台智能体和模型配置";
     assistantMsg.parts = [{ type: "text", content: assistantMsg.content }];
+    persistConversation();
     message.error("智能体暂时无法回复，请检查后台智能体和模型配置");
     console.error(error);
   } finally {
@@ -325,11 +344,58 @@ function trimHistory(limit = 20) {
   }
 }
 
+function persistConversation() {
+  const state: PortalConversationState = {
+    selectedAgentId: selectedAgentId.value,
+    messages: messages.value.slice(-MAX_STORED_MESSAGES).map((item) => ({
+      ...item,
+      streaming: false
+    })),
+    chatHistory: chatHistory.value.slice(-20)
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function restoreConversation() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+
+  try {
+    const state = JSON.parse(raw) as Partial<PortalConversationState>;
+    selectedAgentId.value = typeof state.selectedAgentId === "string" ? state.selectedAgentId : null;
+    messages.value = Array.isArray(state.messages)
+      ? state.messages
+          .filter((item) => item.role === "user" || item.role === "assistant")
+          .map((item) => ({
+            ...item,
+            streaming: false,
+            parts: item.parts?.length ? item.parts : splitThinking(item.content || "").parts
+          }))
+      : [];
+    chatHistory.value = Array.isArray(state.chatHistory)
+      ? state.chatHistory.filter(
+          (item) =>
+            (item.role === "user" || item.role === "assistant") &&
+            typeof item.content === "string" &&
+            item.content.trim()
+        )
+      : [];
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
 function snippet(text: string, limit = 160) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= limit) return normalized;
   return `${normalized.slice(0, limit)}...`;
 }
 
-onMounted(refreshAgents);
+watch([messages, chatHistory, selectedAgentId], persistConversation, { deep: true });
+
+onMounted(async () => {
+  restoreConversation();
+  await refreshAgents();
+  scrollToBottom();
+});
 </script>

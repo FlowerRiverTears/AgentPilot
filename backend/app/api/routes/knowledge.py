@@ -40,7 +40,10 @@ async def upload_document(kb_id: str, file: UploadFile) -> list[RetrievedChunk]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not text.strip():
         raise HTTPException(status_code=400, detail="Document has no readable text")
-    chunks = await store.add_document(kb_id, filename, text)
+    try:
+        chunks = await store.add_document(kb_id, filename, text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not chunks:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     return chunks

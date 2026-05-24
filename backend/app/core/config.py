@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = "bge-m3"
     embedding_dimensions: int = 1024
+    retrieval_min_score: float = 0.3
+    retrieval_min_lexical_score: float = 0.3
 
 
 settings = Settings()

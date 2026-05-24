@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from app.rag.text_quality import is_readable_text
 from app.schemas.knowledge import RetrievedChunk
 
 
@@ -22,14 +23,15 @@ class RAGPipeline:
     def build_chunks(self, source: str, text: str) -> list[RetrievedChunk]:
         chunks = []
         for chunk in self.chunk_text(text):
-            chunks.append(
-                RetrievedChunk(
-                    chunk_id=str(uuid4()),
-                    content=chunk,
-                    score=0.0,
-                    source=source,
+            if is_readable_text(chunk):
+                chunks.append(
+                    RetrievedChunk(
+                        chunk_id=str(uuid4()),
+                        content=chunk,
+                        score=0.0,
+                        source=source,
+                    )
                 )
-            )
         return chunks
 
 
