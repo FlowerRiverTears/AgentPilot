@@ -1,7 +1,11 @@
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+
 export interface AnswerPart {
   type: "text" | "code";
   content: string;
   language?: string;
+  html?: string;
 }
 
 export function cleanAnswerText(text: string) {
@@ -13,6 +17,15 @@ export function cleanAnswerText(text: string) {
     .trim();
 }
 
+export function renderMarkdown(text: string): string {
+  try {
+    const raw = marked.parse(text, { async: false }) as string;
+    return DOMPurify.sanitize(raw);
+  } catch {
+    return text;
+  }
+}
+
 export function parseAnswerParts(text: string): AnswerPart[] {
   const parts: AnswerPart[] = [];
   const blockPattern = /```(\w+)?\n?([\s\S]*?)```/g;
@@ -20,9 +33,9 @@ export function parseAnswerParts(text: string): AnswerPart[] {
   let match: RegExpExecArray | null;
 
   while ((match = blockPattern.exec(text))) {
-    const plain = cleanAnswerText(text.slice(cursor, match.index));
-    if (plain) {
-      parts.push({ type: "text", content: plain });
+    const plain = text.slice(cursor, match.index);
+    if (plain.trim()) {
+      parts.push({ type: "text", content: plain, html: renderMarkdown(plain) });
     }
     parts.push({
       type: "code",
@@ -32,16 +45,16 @@ export function parseAnswerParts(text: string): AnswerPart[] {
     cursor = match.index + match[0].length;
   }
 
-  const tail = cleanAnswerText(text.slice(cursor));
-  if (tail) {
-    parts.push({ type: "text", content: tail });
+  const tail = text.slice(cursor);
+  if (tail.trim()) {
+    parts.push({ type: "text", content: tail, html: renderMarkdown(tail) });
   }
 
-  return parts.length ? parts : [{ type: "text", content: cleanAnswerText(text) }];
+  return parts.length ? parts : [{ type: "text", content: text, html: renderMarkdown(text) }];
 }
 
 export function splitThinking(answer: string) {
-  const match = answer.match(/<think>([\s\S]*?)<\/think>/i);
+  const match = answer.match(/<think([\s\S]*?)<\/think>/i);
   if (!match) {
     const content = cleanAnswerText(answer);
     return { content, parts: parseAnswerParts(answer), thinking: "" };

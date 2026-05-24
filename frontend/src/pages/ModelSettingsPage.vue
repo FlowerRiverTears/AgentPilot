@@ -74,7 +74,7 @@ const testingId = ref<string | null>(null);
 const editingId = ref<string | null>(null);
 
 const form = reactive({
-  name: "minmax",
+  name: "",
   base_url: "",
   api_key: "",
   default_model: "",
@@ -201,7 +201,7 @@ function edit(row: ModelConfig) {
 
 function resetForm() {
   editingId.value = null;
-  form.name = "minmax";
+  form.name = "";
   form.base_url = "";
   form.api_key = "";
   form.default_model = "";
@@ -209,8 +209,12 @@ function resetForm() {
 }
 
 async function setDefault(configId: string) {
-  await store.setDefaultModelConfig(configId);
-  message.success("默认模型配置已切换");
+  try {
+    await store.setDefaultModelConfig(configId);
+    message.success("默认模型配置已切换");
+  } catch (e: any) {
+    message.error(e?.message || "设置默认失败");
+  }
 }
 
 async function test(row: ModelConfig) {
@@ -237,8 +241,12 @@ function confirmDelete(row: ModelConfig) {
     positiveText: "删除",
     negativeText: "取消",
     onPositiveClick: async () => {
-      await store.deleteModelConfig(row.id);
-      message.success("模型配置已删除");
+      try {
+        await store.deleteModelConfig(row.id);
+        message.success("模型配置已删除");
+      } catch (e: any) {
+        message.error(e?.message || "删除失败");
+      }
     }
   });
 }

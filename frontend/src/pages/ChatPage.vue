@@ -35,7 +35,7 @@
           <div class="answer-render">
             <template v-for="(part, index) in answerParts" :key="index">
               <pre v-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
-              <div v-else class="answer-text">{{ part.content }}</div>
+              <div v-else class="answer-text markdown-body" v-html="part.html || part.content" />
             </template>
           </div>
         </div>

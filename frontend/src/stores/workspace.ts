@@ -3,11 +3,14 @@ import { defineStore } from "pinia";
 import { api } from "../api/client";
 import type {
   Agent,
+  ChatMessage,
   KnowledgeBase,
   ModelConfig,
   ModelConfigTestResult,
   RetrievedChunk,
+  RunDetail,
   RunResult,
+  RunSummary,
   SampleDocument,
   ToolDefinition,
   ToolPayload,
@@ -17,17 +20,23 @@ import type {
 export const useWorkspaceStore = defineStore("workspace", {
   state: () => ({
     agents: [] as Agent[],
+    publishedAgents: [] as Agent[],
     knowledgeBases: [] as KnowledgeBase[],
     sampleDocuments: [] as SampleDocument[],
     tools: [] as ToolDefinition[],
     modelConfigs: [] as ModelConfig[],
     modelConfig: null as ModelConfig | null,
-    lastRun: null as RunResult | null
+    lastRun: null as RunResult | null,
+    runs: [] as RunSummary[]
   }),
   actions: {
     async loadAgents() {
       const response = await api.get<Agent[]>("/agents");
       this.agents = response.data;
+    },
+    async loadPublishedAgents() {
+      const response = await api.get<Agent[]>("/agents/published");
+      this.publishedAgents = response.data;
     },
     async createAgent(payload: {
       name: string;
@@ -39,6 +48,38 @@ export const useWorkspaceStore = defineStore("workspace", {
       tool_ids?: string[];
     }) {
       const response = await api.post<Agent>("/agents", payload);
+      this.agents.unshift(response.data);
+      return response.data;
+    },
+    async updateAgent(agentId: string, payload: {
+      name: string;
+      description: string;
+      system_prompt: string;
+      model?: string | null;
+      model_config_id?: string | null;
+      knowledge_base_ids: string[];
+      tool_ids: string[];
+    }) {
+      const response = await api.put<Agent>(`/agents/${agentId}`, payload);
+      this.agents = this.agents.map((item) => (item.id === agentId ? response.data : item));
+      return response.data;
+    },
+    async deleteAgent(agentId: string) {
+      await api.delete(`/agents/${agentId}`);
+      this.agents = this.agents.filter((item) => item.id !== agentId);
+    },
+    async publishAgent(agentId: string) {
+      const response = await api.post<Agent>(`/agents/${agentId}/publish`);
+      this.agents = this.agents.map((item) => (item.id === agentId ? response.data : item));
+      return response.data;
+    },
+    async unpublishAgent(agentId: string) {
+      const response = await api.post<Agent>(`/agents/${agentId}/unpublish`);
+      this.agents = this.agents.map((item) => (item.id === agentId ? response.data : item));
+      return response.data;
+    },
+    async duplicateAgent(agentId: string) {
+      const response = await api.post<Agent>(`/agents/${agentId}/duplicate`);
       this.agents.unshift(response.data);
       return response.data;
     },
@@ -109,12 +150,21 @@ export const useWorkspaceStore = defineStore("workspace", {
       });
       return response.data;
     },
-    async runAgent(agentId: string, input: string) {
+    async runAgent(agentId: string, input: string, messages?: ChatMessage[]) {
       const response = await api.post<RunResult>("/runs", {
         agent_id: agentId,
-        input
+        input,
+        messages: messages || []
       });
       this.lastRun = response.data;
+      return response.data;
+    },
+    async loadRuns() {
+      const response = await api.get<RunSummary[]>("/runs");
+      this.runs = response.data;
+    },
+    async getRun(runId: string) {
+      const response = await api.get<RunDetail>(`/runs/${runId}`);
       return response.data;
     },
     async reloadForRunPage() {

@@ -23,15 +23,15 @@
           <n-button text size="small" :loading="loadingAgents" @click="refreshAgents">刷新</n-button>
         </div>
 
-        <div v-if="!store.agents.length" class="portal-empty-panel">
+        <div v-if="!publishedAgents.length" class="portal-empty-panel">
           <h2>还没有可用智能体</h2>
-          <p>请进入后台创建智能体后，再回到前台提供服务。</p>
+          <p>请进入后台创建并发布智能体后，再回到前台提供服务。</p>
           <n-button type="primary" @click="goAdmin">去后台创建</n-button>
         </div>
 
         <div v-else class="agent-list">
           <button
-            v-for="agent in store.agents"
+            v-for="agent in publishedAgents"
             :key="agent.id"
             class="agent-choice"
             :class="{ active: agent.id === selectedAgentId }"
@@ -54,7 +54,7 @@
           <n-tag v-if="selectedAgent" type="success" round>在线</n-tag>
         </div>
 
-        <div class="chat-thread">
+        <div ref="chatThreadRef" class="chat-thread">
           <div v-if="!messages.length" class="chat-empty">
             <h3>开始对话</h3>
             <p>输入问题后，智能体会根据已配置能力和知识回答。</p>
@@ -67,7 +67,9 @@
             :class="messageItem.role"
           >
             <div class="chat-bubble">
-              <div class="chat-role">{{ messageItem.role === "user" ? "我" : selectedAgent?.name || "智能体" }}</div>
+              <div class="chat-role">
+                {{ messageItem.role === "user" ? "我" : messageItem.agentName || selectedAgent?.name || "智能体" }}
+              </div>
               <n-collapse v-if="messageItem.thinking" class="thinking-collapse">
                 <n-collapse-item title="思考过程" name="thinking">
                   <div class="thinking-content">{{ messageItem.thinking }}</div>
@@ -76,8 +78,9 @@
               <div class="answer-render">
                 <template v-for="(part, index) in messageItem.parts" :key="index">
                   <pre v-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
-                  <div v-else class="chat-content">{{ part.content }}</div>
+                  <div v-else class="chat-content markdown-body" v-html="part.html || part.content" />
                 </template>
+                <span v-if="messageItem.streaming" class="streaming-cursor">▍</span>
               </div>
               <div v-if="messageItem.citations?.length" class="chat-citations">
                 <n-collapse>
@@ -115,11 +118,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useMessage } from "naive-ui";
 import { useRouter } from "vue-router";
 
-import type { RetrievedChunk } from "../api/types";
+import type { ChatMessage, RetrievedChunk } from "../api/types";
 import { useUiStore } from "../stores/ui";
 import { useWorkspaceStore } from "../stores/workspace";
 import { splitThinking, type AnswerPart } from "../utils/answerFormat";
@@ -129,8 +132,11 @@ interface PortalMessage {
   role: "user" | "assistant";
   content: string;
   parts: AnswerPart[];
+  agentId?: string;
+  agentName?: string;
   thinking?: string;
   citations?: RetrievedChunk[];
+  streaming?: boolean;
 }
 
 const message = useMessage();
@@ -142,14 +148,18 @@ const input = ref("");
 const sending = ref(false);
 const loadingAgents = ref(false);
 const messages = ref<PortalMessage[]>([]);
+const chatHistory = ref<ChatMessage[]>([]);
+const chatThreadRef = ref<HTMLElement | null>(null);
+
+const publishedAgents = computed(() => store.publishedAgents);
 
 const selectedAgent = computed(
-  () => store.agents.find((agent) => agent.id === selectedAgentId.value) ?? null
+  () => publishedAgents.value.find((agent) => agent.id === selectedAgentId.value) ?? null
 );
 
 function selectAgent(agentId: string) {
   selectedAgentId.value = agentId;
-  messages.value = [];
+  scrollToBottom();
 }
 
 function goAdmin() {
@@ -159,13 +169,21 @@ function goAdmin() {
 async function refreshAgents() {
   loadingAgents.value = true;
   try {
-    await store.loadAgents();
+    await store.loadPublishedAgents();
     if (!selectedAgent.value) {
-      selectedAgentId.value = store.agents[0]?.id ?? null;
+      selectedAgentId.value = publishedAgents.value[0]?.id ?? null;
     }
   } finally {
     loadingAgents.value = false;
   }
+}
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (chatThreadRef.value) {
+      chatThreadRef.value.scrollTop = chatThreadRef.value.scrollHeight;
+    }
+  });
 }
 
 async function send() {
@@ -179,6 +197,9 @@ async function send() {
     return;
   }
 
+  const agentId = selectedAgentId.value;
+  const agentName = selectedAgent.value?.name || "智能体";
+
   input.value = "";
   messages.value.push({
     id: crypto.randomUUID(),
@@ -186,20 +207,111 @@ async function send() {
     content,
     parts: [{ type: "text", content }]
   });
+  scrollToBottom();
+
+  chatHistory.value.push({ role: "user", content });
 
   sending.value = true;
+  const assistantMsg: PortalMessage = {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: "",
+    parts: [{ type: "text", content: "" }],
+    agentId,
+    agentName,
+    citations: [],
+    streaming: true
+  };
+  messages.value.push(assistantMsg);
+  scrollToBottom();
+
   try {
-    const result = await store.runAgent(selectedAgentId.value, content);
-    const parsedAnswer = splitThinking(result.answer);
-    messages.value.push({
-      id: result.run_id,
-      role: "assistant",
-      content: parsedAnswer.content,
-      parts: parsedAnswer.parts,
-      thinking: parsedAnswer.thinking,
-      citations: result.citations
+    const response = await fetch("/api/runs/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_id: agentId,
+        input: content,
+        messages: chatHistory.value.slice(0, -1)
+      })
     });
+
+    if (!response.ok || !response.body) {
+      throw new Error("Stream request failed");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullAnswer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith("event: steps")) continue;
+        if (line.startsWith("event: citations")) {
+          const dataLine = lines[i + 1];
+          if (dataLine?.startsWith("data: ")) {
+            try {
+              assistantMsg.citations = JSON.parse(dataLine.slice(6));
+            } catch { /* ignore */ }
+          }
+          continue;
+        }
+        if (line.startsWith("event: done")) {
+          const dataLine = lines[i + 1];
+          if (dataLine?.startsWith("data: ")) {
+            try {
+              const doneData = JSON.parse(dataLine.slice(6));
+              assistantMsg.content = fullAnswer;
+              const parsed = splitThinking(fullAnswer);
+              assistantMsg.parts = parsed.parts;
+              assistantMsg.thinking = parsed.thinking;
+              assistantMsg.streaming = false;
+              chatHistory.value.push({ role: "assistant", content: fullAnswer });
+              trimHistory();
+            } catch { /* ignore */ }
+          }
+          continue;
+        }
+        if (line.startsWith("data: ")) {
+          try {
+            const payload = JSON.parse(line.slice(6));
+            if (payload.token) {
+              fullAnswer += payload.token;
+              assistantMsg.content = fullAnswer;
+              const parsed = splitThinking(fullAnswer);
+              assistantMsg.parts = parsed.parts;
+              assistantMsg.thinking = parsed.thinking;
+              scrollToBottom();
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    }
+
+    if (assistantMsg.streaming) {
+      assistantMsg.streaming = false;
+      assistantMsg.content = fullAnswer;
+      const parsed = splitThinking(fullAnswer);
+      assistantMsg.parts = parsed.parts;
+      assistantMsg.thinking = parsed.thinking;
+      if (fullAnswer) {
+        chatHistory.value.push({ role: "assistant", content: fullAnswer });
+        trimHistory();
+      }
+    }
   } catch (error) {
+    assistantMsg.streaming = false;
+    assistantMsg.content = "智能体暂时无法回复，请检查后台智能体和模型配置";
+    assistantMsg.parts = [{ type: "text", content: assistantMsg.content }];
     message.error("智能体暂时无法回复，请检查后台智能体和模型配置");
     console.error(error);
   } finally {
@@ -207,11 +319,15 @@ async function send() {
   }
 }
 
+function trimHistory(limit = 20) {
+  if (chatHistory.value.length > limit) {
+    chatHistory.value = chatHistory.value.slice(-limit);
+  }
+}
+
 function snippet(text: string, limit = 160) {
   const normalized = text.replace(/\s+/g, " ").trim();
-  if (normalized.length <= limit) {
-    return normalized;
-  }
+  if (normalized.length <= limit) return normalized;
   return `${normalized.slice(0, limit)}...`;
 }
 

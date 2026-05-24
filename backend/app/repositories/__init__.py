@@ -1,1 +1,1 @@
-"""Temporary repositories used before database persistence is wired."""
+"""Database repositories for AgentPilot."""

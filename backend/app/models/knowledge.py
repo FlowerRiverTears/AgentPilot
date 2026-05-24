@@ -4,6 +4,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.config import settings
 from app.db.base import Base, TimestampMixin
 
 
@@ -34,4 +35,4 @@ class DocumentChunk(Base, TimestampMixin):
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(255), nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(64))
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(settings.embedding_dimensions))

@@ -1,6 +1,6 @@
 <template>
   <div class="two-column">
-    <n-card title="创建智能体">
+    <n-card :title="editingAgentId ? '编辑智能体' : '创建智能体'">
       <n-form label-placement="top">
         <n-form-item label="名称">
           <n-input v-model:value="form.name" placeholder="客服助手" />
@@ -38,7 +38,12 @@
             placeholder="选择需要调用的应用工具"
           />
         </n-form-item>
-        <n-button type="primary" block @click="submit">创建</n-button>
+        <div class="form-actions">
+          <n-button type="primary" block @click="submit">
+            {{ editingAgentId ? "保存修改" : "创建" }}
+          </n-button>
+          <n-button v-if="editingAgentId" block secondary @click="resetForm">取消编辑</n-button>
+        </div>
       </n-form>
     </n-card>
 
@@ -49,14 +54,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, reactive } from "vue";
-import { NTag, useMessage, type DataTableColumns } from "naive-ui";
+import { computed, h, onMounted, reactive, ref } from "vue";
+import { NButton, NPopconfirm, NSpace, NTag, useMessage, type DataTableColumns } from "naive-ui";
 
 import type { Agent } from "../api/types";
 import { useWorkspaceStore } from "../stores/workspace";
 
 const message = useMessage();
 const store = useWorkspaceStore();
+const editingAgentId = ref<string | null>(null);
 
 const form = reactive({
   name: "",
@@ -85,29 +91,92 @@ const toolOptions = computed(() =>
   }))
 );
 
+const statusTagType = (status: string) => {
+  if (status === "published") return "success";
+  if (status === "draft") return "info";
+  if (status === "deleted") return "default";
+  return "warning";
+};
+
+const statusLabel = (status: string) => {
+  if (status === "published") return "已发布";
+  if (status === "draft") return "草稿";
+  return status;
+};
+
 const columns: DataTableColumns<Agent> = [
-  { title: "名称", key: "name" },
+  { title: "名称", key: "name", width: 140 },
   {
     title: "模型配置",
     key: "model_config_id",
+    width: 180,
     render(row) {
       return modelConfigName(row.model_config_id);
     }
   },
-  { title: "描述", key: "description" },
+  { title: "描述", key: "description", ellipsis: { tooltip: true } },
   {
     title: "状态",
     key: "status",
-    render: (row) => h(NTag, { type: "info" }, { default: () => row.status })
+    width: 90,
+    render: (row) => h(NTag, { type: statusTagType(row.status), size: "small" }, { default: () => statusLabel(row.status) })
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 280,
+    render(row) {
+      const buttons = [
+        h(NButton, { size: "small", secondary: true, onClick: () => startEdit(row) }, { default: () => "编辑" })
+      ];
+      if (row.status === "draft") {
+        buttons.push(
+          h(NButton, { size: "small", type: "success", secondary: true, onClick: () => handlePublish(row.id) }, { default: () => "发布" })
+        );
+      }
+      if (row.status === "published") {
+        buttons.push(
+          h(NButton, { size: "small", type: "warning", secondary: true, onClick: () => handleUnpublish(row.id) }, { default: () => "下线" })
+        );
+      }
+      buttons.push(
+        h(NButton, { size: "small", secondary: true, onClick: () => handleDuplicate(row.id) }, { default: () => "复制" })
+      );
+      buttons.push(
+        h(NPopconfirm, { onPositiveClick: () => handleDelete(row.id) }, {
+          trigger: () => h(NButton, { size: "small", type: "error", secondary: true }, { default: () => "删除" }),
+          default: () => "确认删除该智能体？"
+        })
+      );
+      return h(NSpace, { size: 4 }, { default: () => buttons });
+    }
   }
 ];
 
 function modelConfigName(configId?: string | null) {
-  if (!configId) {
-    return "默认配置";
-  }
+  if (!configId) return "默认配置";
   const config = store.modelConfigs.find((item) => item.id === configId);
   return config ? `${config.name} / ${config.default_model}` : "配置已删除";
+}
+
+function startEdit(agent: Agent) {
+  editingAgentId.value = agent.id;
+  form.name = agent.name;
+  form.description = agent.description;
+  form.model_config_id = agent.model_config_id ?? null;
+  form.system_prompt = agent.system_prompt;
+  form.knowledge_base_ids = [...agent.knowledge_base_ids];
+  form.tool_ids = [...agent.tool_ids];
+}
+
+function resetForm() {
+  editingAgentId.value = null;
+  form.name = "";
+  form.description = "";
+  form.model_config_id = store.modelConfigs.find((item) => item.is_default)?.id ?? store.modelConfigs[0]?.id ?? null;
+  form.system_prompt = "你是一个企业 AI 智能体。回答必须清晰、准确，并在使用知识库时说明来源。";
+  form.knowledge_base_ids = [];
+  form.tool_ids = [];
 }
 
 async function submit() {
@@ -120,26 +189,88 @@ async function submit() {
     return;
   }
 
-  await store.createAgent({
-    ...form,
-    name: form.name.trim(),
-    description: form.description.trim(),
-    model: undefined
-  });
-  message.success("智能体已创建");
-  form.name = "";
-  form.description = "";
-  form.tool_ids = [];
+  try {
+    if (editingAgentId.value) {
+      await store.updateAgent(editingAgentId.value, {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        system_prompt: form.system_prompt,
+        model_config_id: form.model_config_id,
+        knowledge_base_ids: form.knowledge_base_ids,
+        tool_ids: form.tool_ids
+      });
+      message.success("智能体已更新");
+      resetForm();
+    } else {
+      await store.createAgent({
+        name: form.name.trim(),
+        description: form.description.trim(),
+        system_prompt: form.system_prompt,
+        model_config_id: form.model_config_id,
+        knowledge_base_ids: form.knowledge_base_ids,
+        tool_ids: form.tool_ids
+      });
+      message.success("智能体已创建");
+      form.name = "";
+      form.description = "";
+      form.tool_ids = [];
+    }
+  } catch (e: any) {
+    message.error(e?.message || "操作失败，请重试");
+  }
+}
+
+async function handlePublish(agentId: string) {
+  try {
+    await store.publishAgent(agentId);
+    message.success("智能体已发布");
+  } catch (e: any) {
+    message.error(e?.message || "发布失败");
+  }
+}
+
+async function handleUnpublish(agentId: string) {
+  try {
+    await store.unpublishAgent(agentId);
+    message.success("智能体已下线");
+  } catch (e: any) {
+    message.error(e?.message || "下线失败");
+  }
+}
+
+async function handleDuplicate(agentId: string) {
+  try {
+    await store.duplicateAgent(agentId);
+    message.success("智能体已复制");
+  } catch (e: any) {
+    message.error(e?.message || "复制失败");
+  }
+}
+
+async function handleDelete(agentId: string) {
+  try {
+    await store.deleteAgent(agentId);
+    message.success("智能体已删除");
+    if (editingAgentId.value === agentId) {
+      resetForm();
+    }
+  } catch (e: any) {
+    message.error(e?.message || "删除失败");
+  }
 }
 
 onMounted(async () => {
-  await Promise.all([
-    store.loadAgents(),
-    store.loadKnowledgeBases(),
-    store.loadModelConfigs(),
-    store.loadTools()
-  ]);
-  form.model_config_id =
-    store.modelConfigs.find((item) => item.is_default)?.id ?? store.modelConfigs[0]?.id ?? null;
+  try {
+    await Promise.all([
+      store.loadAgents(),
+      store.loadKnowledgeBases(),
+      store.loadModelConfigs(),
+      store.loadTools()
+    ]);
+    form.model_config_id =
+      store.modelConfigs.find((item) => item.is_default)?.id ?? store.modelConfigs[0]?.id ?? null;
+  } catch (e: any) {
+    message.error("加载数据失败");
+  }
 });
 </script>

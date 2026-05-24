@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from app.rag.document_loader import DocumentParseError, extract_upload_text
 from app.rag.sample_documents import SAMPLE_DOCUMENTS
 from app.repositories.memory import store
 from app.schemas.knowledge import (
@@ -32,8 +33,14 @@ async def delete_knowledge_base(kb_id: str) -> None:
 @router.post("/{kb_id}/documents", response_model=list[RetrievedChunk])
 async def upload_document(kb_id: str, file: UploadFile) -> list[RetrievedChunk]:
     raw = await file.read()
-    text = raw.decode("utf-8", errors="ignore")
-    chunks = await store.add_document(kb_id, file.filename or "uploaded-file", text)
+    filename = file.filename or "uploaded-file"
+    try:
+        text = extract_upload_text(filename, file.content_type, raw)
+    except DocumentParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Document has no readable text")
+    chunks = await store.add_document(kb_id, filename, text)
     if not chunks:
         raise HTTPException(status_code=404, detail="Knowledge base not found")
     return chunks

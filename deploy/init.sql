@@ -9,3 +9,6 @@ CREATE TABLE IF NOT EXISTS agentpilot_bootstrap (
 INSERT INTO agentpilot_bootstrap (name)
 VALUES ('AgentPilot database initialized')
 ON CONFLICT DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding ON document_chunks
+USING hnsw (embedding vector_cosine_ops);

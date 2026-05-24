@@ -20,7 +20,11 @@ class Settings(BaseSettings):
     llm_api_key: str = "ollama"
     llm_default_model: str = "qwen2.5:7b"
     llm_request_timeout_seconds: int = 120
+
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
     embedding_model: str = "bge-m3"
+    embedding_dimensions: int = 1024
 
 
 settings = Settings()

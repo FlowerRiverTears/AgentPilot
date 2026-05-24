@@ -75,6 +75,30 @@ export interface RunResult {
   steps: Array<{ name: string; status: string; detail: string }>;
 }
 
+export interface RunSummary {
+  run_id: string;
+  agent_id: string;
+  agent_name: string;
+  status: string;
+  input: string;
+  model: string;
+  duration_ms: number | null;
+  trace_id: string | null;
+  created_at: string;
+}
+
+export interface RunDetail extends RunSummary {
+  answer: string;
+  citations: Array<{
+    chunk_id: string;
+    content: string;
+    score: number;
+    source: string;
+  }>;
+  steps: Array<{ name: string; status: string; detail: string }>;
+  usage: Record<string, unknown>;
+}
+
 export interface ModelConfig {
   id: string;
   name: string;
@@ -87,4 +111,9 @@ export interface ModelConfig {
 export interface ModelConfigTestResult {
   ok: boolean;
   message: string;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
 }

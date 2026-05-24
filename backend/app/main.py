@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,8 +9,15 @@ from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
 from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool
-from app.llm.gateway import llm_gateway
 from app.repositories.memory import store
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    await store.initialize()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -16,6 +25,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.app_version,
         description="AI Agent creation, RAG, vector search and observability platform.",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -28,13 +38,6 @@ def create_app() -> FastAPI:
     app.add_middleware(AspectMiddleware)
 
     app.include_router(api_router, prefix=settings.api_prefix)
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await store.initialize()
-        await llm_gateway.ensure_defaults()
 
     return app
 

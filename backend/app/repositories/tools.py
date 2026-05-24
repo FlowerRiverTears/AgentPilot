@@ -49,11 +49,16 @@ class ToolStore:
             tool = await session.get(Tool, tool_uuid)
             if not tool:
                 return None
-            tool.name = payload.name
-            tool.type = payload.type
-            tool.description = payload.description
-            tool.config = payload.config.model_dump()
-            tool.enabled = payload.enabled
+            if payload.name is not None:
+                tool.name = payload.name
+            if payload.type is not None:
+                tool.type = payload.type
+            if payload.description is not None:
+                tool.description = payload.description
+            if payload.config is not None:
+                tool.config = payload.config.model_dump()
+            if payload.enabled is not None:
+                tool.enabled = payload.enabled
             await session.commit()
             await session.refresh(tool)
             return self._to_read(tool)

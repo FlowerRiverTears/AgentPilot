@@ -57,6 +57,7 @@ const menuOptions = [
     label: () => h(RouterLink, { to: "/settings/model" }, { default: () => "模型配置" }),
     key: "/settings/model"
   },
+  { label: () => h(RouterLink, { to: "/runs" }, { default: () => "运行历史" }), key: "/runs" },
   { label: () => h(RouterLink, { to: "/chat" }, { default: () => "运行测试" }), key: "/chat" }
 ];
 

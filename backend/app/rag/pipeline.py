@@ -1,7 +1,6 @@
 from uuid import uuid4
 
 from app.schemas.knowledge import RetrievedChunk
-from app.vector.embeddings import embedding_service
 
 
 class RAGPipeline:
@@ -32,18 +31,6 @@ class RAGPipeline:
                 )
             )
         return chunks
-
-    def retrieve(self, query: str, chunks: list[RetrievedChunk], top_k: int = 5) -> list[RetrievedChunk]:
-        query_vector = embedding_service.embed_text(query)
-        ranked: list[RetrievedChunk] = []
-
-        for chunk in chunks:
-            chunk_vector = embedding_service.embed_text(chunk.content)
-            score = embedding_service.similarity(query_vector, chunk_vector)
-            ranked.append(chunk.model_copy(update={"score": score}))
-
-        ranked.sort(key=lambda item: item.score, reverse=True)
-        return ranked[:top_k]
 
 
 rag_pipeline = RAGPipeline()

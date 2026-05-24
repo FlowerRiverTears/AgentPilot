@@ -21,8 +21,12 @@ class ToolCreate(BaseModel):
     enabled: bool = True
 
 
-class ToolUpdate(ToolCreate):
-    pass
+class ToolUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    type: Literal["http"] | None = None
+    description: str | None = None
+    config: HttpToolConfig | None = None
+    enabled: bool | None = None
 
 
 class ToolRead(BaseModel):

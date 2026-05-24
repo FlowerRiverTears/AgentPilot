@@ -18,7 +18,8 @@ async def create_run(payload: AgentRunCreate) -> dict:
     agent = await store.get_agent(payload.agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return await agent_runtime.run(agent, payload.input)
+    messages = [{"role": m.role, "content": m.content} for m in payload.messages] if payload.messages else None
+    return await agent_runtime.run(agent, payload.input, messages=messages)
 
 
 @router.get("/{run_id}", response_model=AgentRunDetail)
@@ -34,4 +35,9 @@ async def stream_run(payload: AgentRunCreate) -> StreamingResponse:
     agent = await store.get_agent(payload.agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return StreamingResponse(agent_runtime.stream(agent, payload.input), media_type="text/event-stream")
+    messages = [{"role": m.role, "content": m.content} for m in payload.messages] if payload.messages else None
+    return StreamingResponse(
+        agent_runtime.stream(agent, payload.input, messages=messages),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

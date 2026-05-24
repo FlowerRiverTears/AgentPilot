@@ -4,8 +4,8 @@
 
     <div class="metrics">
       <n-card title="第二版总进度">
-        <div class="metric-value">推进中</div>
-        <div class="muted">第一版已完成，当前推进第二版</div>
+        <div class="metric-value">核心完成</div>
+        <div class="muted">流式输出、RAG、多轮对话已接入</div>
       </n-card>
       <n-card title="智能体管理">
         <div class="metric-value">完成</div>
@@ -15,18 +15,18 @@
         <div class="metric-value">完成</div>
         <div class="muted">列表、详情、引用、步骤</div>
       </n-card>
-      <n-card title="工具系统">
-        <div class="metric-value">推进中</div>
-        <div class="muted">HTTP 工具基础闭环</div>
+      <n-card title="检索增强">
+        <div class="metric-value">完成</div>
+        <div class="muted">PDF 解析、Embedding、pgvector 检索</div>
       </n-card>
     </div>
 
     <n-card title="第二版进度">
-      <n-steps :current="3" status="process">
+      <n-steps :current="4" status="finish">
         <n-step title="智能体管理" description="编辑、发布、下线、复制、软删除" />
         <n-step title="运行历史" description="Run 列表和详情页" />
         <n-step title="工具系统" description="HTTP 工具创建、测试和运行时调用" />
-        <n-step title="权限和流式" description="登录鉴权、前台流式输出" />
+        <n-step title="流式输出与检索增强" description="SSE、真实 Embedding、pgvector、PDF 解析、多轮上下文" />
       </n-steps>
     </n-card>
 
@@ -73,6 +73,12 @@ const completedItems = [
   "智能体编辑、发布、下线、复制、软删除",
   "前台只展示已发布智能体",
   "运行历史列表和详情页",
-  "HTTP 工具创建、测试和运行时调用"
+  "HTTP 工具创建、测试和运行时调用",
+  "SSE 流式输出（前台实时显示回答）",
+  "真实 Embedding 服务接入（Ollama bge-m3）",
+  "pgvector 数据库端向量检索",
+  "多轮对话支持",
+  "切换智能体时保留前台会话上下文",
+  "PDF 上传解析为可检索文本，避免二进制乱码切块"
 ];
 </script>

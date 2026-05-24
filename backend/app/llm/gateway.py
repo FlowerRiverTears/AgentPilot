@@ -1,4 +1,6 @@
+import json
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 import httpx
 from sqlalchemy import select, update
@@ -10,7 +12,6 @@ from app.schemas.settings import ModelConfigCreate, ModelConfigRead, ModelConfig
 
 
 class LLMGateway:
-    """OpenAI-compatible gateway with a local fallback for first-run development."""
 
     def __init__(self) -> None:
         self.base_url = settings.llm_base_url
@@ -45,14 +46,24 @@ class LLMGateway:
             return [self._row_to_read(row) for row in result.scalars().all()]
 
     async def get_config_by_id(self, config_id: str) -> ModelConfigRead | None:
+        config_uuid = self._maybe_uuid(config_id)
+        if not config_uuid:
+            return None
         async with AsyncSessionLocal() as session:
-            row = await session.get(ModelConfig, config_id)
+            row = await session.get(ModelConfig, config_uuid)
             if not row:
                 return None
             return self._row_to_read(row)
 
     async def get_config(self) -> ModelConfigRead:
         await self.ensure_defaults()
+        async with AsyncSessionLocal() as session:
+            row = (
+                await session.execute(select(ModelConfig).where(ModelConfig.is_default.is_(True)))
+            ).scalars().first()
+            if row:
+                return self._row_to_read(row)
+
         return ModelConfigRead(
             id="runtime",
             name=self.config_name,
@@ -82,20 +93,27 @@ class LLMGateway:
             return self._row_to_read(row)
 
     async def update_config(self, config_id: str, payload: ModelConfigUpdate) -> ModelConfigRead:
+        config_uuid = self._maybe_uuid(config_id)
+        if not config_uuid:
+            raise KeyError("Model config not found")
         async with AsyncSessionLocal() as session:
-            row = await session.get(ModelConfig, config_id)
+            row = await session.get(ModelConfig, config_uuid)
             if not row:
                 raise KeyError("Model config not found")
 
             if payload.is_default:
                 await self._clear_default(session)
 
-            row.name = payload.name
-            row.base_url = payload.base_url
-            if payload.api_key:
+            if payload.name is not None:
+                row.name = payload.name
+            if payload.base_url is not None:
+                row.base_url = payload.base_url
+            if payload.api_key is not None:
                 row.api_key = payload.api_key
-            row.default_model = payload.default_model
-            row.is_default = payload.is_default
+            if payload.default_model is not None:
+                row.default_model = payload.default_model
+            if payload.is_default is not None:
+                row.is_default = payload.is_default
             await session.commit()
             await session.refresh(row)
             if row.is_default:
@@ -103,8 +121,11 @@ class LLMGateway:
             return self._row_to_read(row)
 
     async def set_default(self, config_id: str) -> ModelConfigRead:
+        config_uuid = self._maybe_uuid(config_id)
+        if not config_uuid:
+            raise KeyError("Model config not found")
         async with AsyncSessionLocal() as session:
-            row = await session.get(ModelConfig, config_id)
+            row = await session.get(ModelConfig, config_uuid)
             if not row:
                 raise KeyError("Model config not found")
             await self._clear_default(session)
@@ -115,8 +136,11 @@ class LLMGateway:
             return self._row_to_read(row)
 
     async def delete_config(self, config_id: str) -> bool:
+        config_uuid = self._maybe_uuid(config_id)
+        if not config_uuid:
+            return False
         async with AsyncSessionLocal() as session:
-            row = await session.get(ModelConfig, config_id)
+            row = await session.get(ModelConfig, config_uuid)
             if not row:
                 return False
             was_default = row.is_default
@@ -183,9 +207,31 @@ class LLMGateway:
         model: str | None = None,
         config_id: str | None = None,
     ) -> AsyncIterator[str]:
-        content = await self.chat(messages, model=model, config_id=config_id)
-        for token in content.split(" "):
-            yield token + " "
+        target_model = model
+        base_url = self.base_url
+        api_key = self.api_key
+        default_model = self.default_model
+
+        if config_id:
+            config = await self._get_config_row(config_id)
+            if config:
+                base_url = config.base_url
+                api_key = config.api_key
+                default_model = config.default_model
+                target_model = target_model or config.default_model
+
+        target_model = target_model or default_model
+
+        try:
+            async for token in self._stream_completion(
+                base_url, api_key, target_model, messages
+            ):
+                yield token
+        except Exception:
+            fallback = self._fallback_answer(messages)
+            chunk_size = 4
+            for i in range(0, len(fallback), chunk_size):
+                yield fallback[i : i + chunk_size]
 
     def _fallback_answer(self, messages: list[dict[str, str]]) -> str:
         user_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
@@ -204,7 +250,7 @@ class LLMGateway:
         return (
             "当前未连接真实大模型，且没有命中知识库内容。"
             f"收到的问题是：{question.strip()}。"
-            "请在“模型配置”页面填写可用的接口地址、Token 和模型名，或先为智能体绑定知识库。"
+            "请在「模型配置」页面填写可用的接口地址、Token 和模型名，或先为智能体绑定知识库。"
         )
 
     def _extract_section(self, text: str, start_marker: str, end_marker: str) -> str:
@@ -243,8 +289,17 @@ class LLMGateway:
         )
 
     async def _get_config_row(self, config_id: str) -> ModelConfig | None:
+        config_uuid = self._maybe_uuid(config_id)
+        if not config_uuid:
+            return None
         async with AsyncSessionLocal() as session:
-            return await session.get(ModelConfig, config_id)
+            return await session.get(ModelConfig, config_uuid)
+
+    def _maybe_uuid(self, value: str) -> UUID | None:
+        try:
+            return UUID(value)
+        except ValueError:
+            return None
 
     async def _chat_completion(
         self,
@@ -267,6 +322,40 @@ class LLMGateway:
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
+
+    async def _stream_completion(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        messages: list[dict[str, str]],
+    ) -> AsyncIterator[str]:
+        async with httpx.AsyncClient(timeout=settings.llm_request_timeout_seconds) as client:
+            async with client.stream(
+                "POST",
+                f"{base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                },
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[6:].strip()
+                    if payload == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
 
     def _format_error(self, exc: Exception) -> str:
         if isinstance(exc, httpx.HTTPStatusError):

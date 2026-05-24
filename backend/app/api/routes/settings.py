@@ -21,7 +21,14 @@ async def update_model_config(payload: ModelConfigUpdate) -> ModelConfigRead:
     configs = await llm_gateway.list_configs()
     default_config = next((config for config in configs if config.is_default), None)
     if not default_config:
-        return await llm_gateway.create_config(ModelConfigCreate(**payload.model_dump()))
+        create_data = {
+            "name": payload.name or "default",
+            "base_url": payload.base_url or "",
+            "api_key": payload.api_key or "",
+            "default_model": payload.default_model or "",
+            "is_default": True,
+        }
+        return await llm_gateway.create_config(ModelConfigCreate(**create_data))
     return await llm_gateway.update_config(default_config.id, payload)
 
 

@@ -11,8 +11,14 @@ class AgentCreate(BaseModel):
     tool_ids: list[str] = Field(default_factory=list)
 
 
-class AgentUpdate(AgentCreate):
-    pass
+class AgentUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = None
+    system_prompt: str | None = None
+    model: str | None = None
+    model_config_id: str | None = None
+    knowledge_base_ids: list[str] | None = None
+    tool_ids: list[str] | None = None
 
 
 class AgentRead(AgentCreate):
@@ -38,6 +44,7 @@ class AgentRunSummary(BaseModel):
     status: str
     input: str
     model: str = ""
+    duration_ms: int | None = None
     trace_id: str | None = None
     created_at: str
 

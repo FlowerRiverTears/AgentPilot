@@ -587,6 +587,17 @@ body {
   margin-bottom: 18px;
 }
 
+.tool-form-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tool-form-section .section-header h3 {
+  margin: 0;
+}
+
 .tool-form-section h3 {
   margin: 0 0 12px;
   color: var(--text-strong);
@@ -603,6 +614,105 @@ body {
 .tool-status-field {
   margin-top: 10px;
   margin-bottom: 0;
+}
+
+.markdown-body {
+  line-height: 1.75;
+  word-break: break-word;
+}
+
+.markdown-body p {
+  margin: 0 0 10px;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0 0 10px;
+  padding-left: 24px;
+}
+
+.markdown-body li {
+  margin-bottom: 4px;
+}
+
+.markdown-body strong {
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.markdown-body em {
+  font-style: italic;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin: 16px 0 8px;
+  color: var(--text-strong);
+  font-weight: 700;
+}
+
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 18px; }
+.markdown-body h3 { font-size: 16px; }
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body blockquote {
+  margin: 0 0 10px;
+  padding: 8px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-soft);
+  color: var(--text-muted);
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--surface-soft);
+  font-weight: 600;
+}
+
+.streaming-cursor {
+  animation: blink 0.8s ease-in-out infinite;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.run-detail-desc {
+  margin-bottom: 16px;
+}
+
+.run-detail-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.8;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface-soft);
 }
 
 @media (max-width: 900px) {
