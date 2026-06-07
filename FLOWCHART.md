@@ -42,8 +42,9 @@ flowchart LR
     AGENT --> TOOL
 
     KB --> PARSE[文档解析]
-    PARSE --> CHUNK[文档切块]
-    CHUNK --> EMB[生成 Embedding]
+    PARSE --> MEDIA[多模态提取: 文本/图片/表格]
+    MEDIA --> CHUNK[文档切块]
+    CHUNK --> EMB[多模态 Embedding: 文本向量+图片向量]
     EMB --> PG[(PostgreSQL + pgvector)]
 
     RAG --> PG
@@ -99,7 +100,7 @@ sequenceDiagram
 - LLM：负责生成回答、推理、总结和工具选择。
 - RAG：负责从知识库中检索资料，并把引用来源返回给用户。
 - 切面：负责把鉴权、日志、审计、限流、追踪、成本统计这些能力统一挂到执行链路上。
-- 向量：负责把文档和问题转成 embedding，并用相似度检索找到相关内容。
+- 向量：负责把文档和问题转成多模态 embedding（文本向量 + 图片向量），并用跨模态相似度检索找到相关内容。
 
 ## 6. 它为什么算大型项目
 
@@ -118,7 +119,7 @@ sequenceDiagram
    - 多模型接入、流式输出、token 统计、失败重试、成本统计。
 
 5. RAG 知识库系统
-   - 文件上传、解析、切块、embedding、检索、引用来源。
+   - 文件上传、解析、多模态提取（文本/图片/表格）、切块、多模态 embedding、跨模态检索、引用来源。
 
 6. Agent 执行系统
    - 任务编排、工具调用、执行步骤、长任务、失败恢复。

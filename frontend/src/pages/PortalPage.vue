@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useMessage } from "naive-ui";
 import { useRouter } from "vue-router";
 
@@ -141,12 +141,21 @@ interface PortalMessage {
 
 interface PortalConversationState {
   selectedAgentId: string | null;
+  conversations: Record<string, AgentConversation>;
+  messages?: PortalMessage[];
+  chatHistory?: ChatMessage[];
+}
+
+interface AgentConversation {
   messages: PortalMessage[];
   chatHistory: ChatMessage[];
 }
 
 const STORAGE_KEY = "agentpilot-portal-conversation";
-const MAX_STORED_MESSAGES = 60;
+const MAX_STORED_MESSAGES = 40;
+const MAX_STORED_CONTENT_LENGTH = 12000;
+const MAX_STORED_CITATIONS = 3;
+const MAX_STORED_CITATION_LENGTH = 600;
 
 const message = useMessage();
 const router = useRouter();
@@ -156,8 +165,7 @@ const selectedAgentId = ref<string | null>(null);
 const input = ref("");
 const sending = ref(false);
 const loadingAgents = ref(false);
-const messages = ref<PortalMessage[]>([]);
-const chatHistory = ref<ChatMessage[]>([]);
+const conversations = reactive<Record<string, AgentConversation>>({});
 const chatThreadRef = ref<HTMLElement | null>(null);
 
 const publishedAgents = computed(() => store.publishedAgents);
@@ -166,8 +174,21 @@ const selectedAgent = computed(
   () => publishedAgents.value.find((agent) => agent.id === selectedAgentId.value) ?? null
 );
 
+const activeConversation = computed(() => {
+  if (!selectedAgentId.value) return null;
+  return ensureConversation(selectedAgentId.value);
+});
+
+const messages = computed(() => activeConversation.value?.messages ?? []);
+
+function ensureConversation(agentId: string): AgentConversation {
+  conversations[agentId] ??= { messages: [], chatHistory: [] };
+  return conversations[agentId];
+}
+
 function selectAgent(agentId: string) {
   selectedAgentId.value = agentId;
+  ensureConversation(agentId);
   persistConversation();
   scrollToBottom();
 }
@@ -184,6 +205,9 @@ async function refreshAgents() {
       selectedAgentId.value = publishedAgents.value.some((agent) => agent.id === selectedAgentId.value)
         ? selectedAgentId.value
         : publishedAgents.value[0]?.id ?? null;
+    }
+    if (selectedAgentId.value) {
+      ensureConversation(selectedAgentId.value);
     }
   } finally {
     loadingAgents.value = false;
@@ -211,9 +235,10 @@ async function send() {
 
   const agentId = selectedAgentId.value;
   const agentName = selectedAgent.value?.name || "智能体";
+  const conversation = ensureConversation(agentId);
 
   input.value = "";
-  messages.value.push({
+  conversation.messages.push({
     id: crypto.randomUUID(),
     role: "user",
     content,
@@ -222,7 +247,7 @@ async function send() {
   persistConversation();
   scrollToBottom();
 
-  chatHistory.value.push({ role: "user", content });
+  conversation.chatHistory.push({ role: "user", content });
   persistConversation();
 
   sending.value = true;
@@ -236,7 +261,7 @@ async function send() {
     citations: [],
     streaming: true
   };
-  messages.value.push(assistantMsg);
+  conversation.messages.push(assistantMsg);
   persistConversation();
   scrollToBottom();
 
@@ -247,7 +272,7 @@ async function send() {
       body: JSON.stringify({
         agent_id: agentId,
         input: content,
-        messages: chatHistory.value.slice(0, -1)
+        messages: conversation.chatHistory.slice(0, -1)
       })
     });
 
@@ -290,8 +315,8 @@ async function send() {
               assistantMsg.parts = parsed.parts;
               assistantMsg.thinking = parsed.thinking;
               assistantMsg.streaming = false;
-              chatHistory.value.push({ role: "assistant", content: fullAnswer });
-              trimHistory();
+              conversation.chatHistory.push({ role: "assistant", content: fullAnswer });
+              trimHistory(conversation);
               persistConversation();
             } catch { /* ignore */ }
           }
@@ -321,8 +346,8 @@ async function send() {
       assistantMsg.parts = parsed.parts;
       assistantMsg.thinking = parsed.thinking;
       if (fullAnswer) {
-        chatHistory.value.push({ role: "assistant", content: fullAnswer });
-        trimHistory();
+        conversation.chatHistory.push({ role: "assistant", content: fullAnswer });
+        trimHistory(conversation);
         persistConversation();
       }
     }
@@ -338,22 +363,30 @@ async function send() {
   }
 }
 
-function trimHistory(limit = 20) {
-  if (chatHistory.value.length > limit) {
-    chatHistory.value = chatHistory.value.slice(-limit);
+function trimHistory(conversation: AgentConversation, limit = 20) {
+  if (conversation.chatHistory.length > limit) {
+    conversation.chatHistory = conversation.chatHistory.slice(-limit);
   }
 }
 
 function persistConversation() {
   const state: PortalConversationState = {
     selectedAgentId: selectedAgentId.value,
-    messages: messages.value.slice(-MAX_STORED_MESSAGES).map((item) => ({
-      ...item,
-      streaming: false
-    })),
-    chatHistory: chatHistory.value.slice(-20)
+    conversations: compactConversations(40, 20)
   };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    const fallbackState: PortalConversationState = {
+      selectedAgentId: state.selectedAgentId,
+      conversations: compactConversations(12, 12, false)
+    };
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(fallbackState));
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
 }
 
 function restoreConversation() {
@@ -363,26 +396,87 @@ function restoreConversation() {
   try {
     const state = JSON.parse(raw) as Partial<PortalConversationState>;
     selectedAgentId.value = typeof state.selectedAgentId === "string" ? state.selectedAgentId : null;
-    messages.value = Array.isArray(state.messages)
-      ? state.messages
+
+    Object.keys(conversations).forEach((agentId) => {
+      delete conversations[agentId];
+    });
+
+    if (state.conversations && typeof state.conversations === "object") {
+      Object.entries(state.conversations).forEach(([agentId, conversation]) => {
+        conversations[agentId] = restoreAgentConversation(conversation);
+      });
+    } else if (Array.isArray(state.messages) || Array.isArray(state.chatHistory)) {
+      const legacyAgentId = selectedAgentId.value || "legacy";
+      conversations[legacyAgentId] = restoreAgentConversation({
+        messages: state.messages ?? [],
+        chatHistory: state.chatHistory ?? []
+      });
+      selectedAgentId.value = selectedAgentId.value || legacyAgentId;
+    }
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
+function compactConversations(messageLimit: number, historyLimit: number, keepCitations = true) {
+  return Object.fromEntries(
+    Object.entries(conversations).map(([agentId, conversation]) => [
+      agentId,
+      {
+        messages: conversation.messages.slice(-messageLimit).map((item) => compactMessage(item, keepCitations)),
+        chatHistory: conversation.chatHistory.slice(-historyLimit)
+      }
+    ])
+  );
+}
+
+function compactMessage(item: PortalMessage, keepCitations = true): PortalMessage {
+  const content = trimStoredText(item.content || "", MAX_STORED_CONTENT_LENGTH);
+  return {
+    id: item.id,
+    role: item.role,
+    content,
+    parts: [{ type: "text", content }],
+    agentId: item.agentId,
+    agentName: item.agentName,
+    thinking: trimStoredText(item.thinking || "", 2000),
+    citations: keepCitations
+      ? item.citations?.slice(0, MAX_STORED_CITATIONS).map((chunk) => ({
+          ...chunk,
+          content: trimStoredText(chunk.content, MAX_STORED_CITATION_LENGTH)
+        }))
+      : [],
+    streaming: false
+  };
+}
+
+function restoreAgentConversation(conversation: Partial<AgentConversation>): AgentConversation {
+  return {
+    messages: Array.isArray(conversation.messages)
+      ? conversation.messages
           .filter((item) => item.role === "user" || item.role === "assistant")
           .map((item) => ({
             ...item,
             streaming: false,
-            parts: item.parts?.length ? item.parts : splitThinking(item.content || "").parts
+            content: trimStoredText(item.content || "", MAX_STORED_CONTENT_LENGTH),
+            parts: splitThinking(item.content || "").parts,
+            citations: Array.isArray(item.citations) ? item.citations : []
           }))
-      : [];
-    chatHistory.value = Array.isArray(state.chatHistory)
-      ? state.chatHistory.filter(
+      : [],
+    chatHistory: Array.isArray(conversation.chatHistory)
+      ? conversation.chatHistory.filter(
           (item) =>
             (item.role === "user" || item.role === "assistant") &&
             typeof item.content === "string" &&
             item.content.trim()
         )
-      : [];
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-  }
+      : []
+  };
+}
+
+function trimStoredText(text: string, limit: number) {
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}...`;
 }
 
 function snippet(text: string, limit = 160) {
@@ -391,11 +485,17 @@ function snippet(text: string, limit = 160) {
   return `${normalized.slice(0, limit)}...`;
 }
 
-watch([messages, chatHistory, selectedAgentId], persistConversation, { deep: true });
+watch([conversations, selectedAgentId], persistConversation, { deep: true, flush: "post" });
 
 onMounted(async () => {
   restoreConversation();
+  window.addEventListener("beforeunload", persistConversation);
   await refreshAgents();
   scrollToBottom();
+});
+
+onBeforeUnmount(() => {
+  persistConversation();
+  window.removeEventListener("beforeunload", persistConversation);
 });
 </script>

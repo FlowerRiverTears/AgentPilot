@@ -30,26 +30,37 @@
 backend/app/tools/registry.py
 ```
 
-接口：
-
-```text
-GET /api/tools
-```
-
-当前内置工具：
+内置工具：
 
 - `current_time`
 - `order_lookup`
 
-运行时会根据用户问题中的关键词和智能体绑定的工具决定是否调用。
+数据库持久化工具：
 
-当前已经支持持久化 HTTP 工具：
+```text
+backend/app/repositories/tools.py
+```
 
-- 工具表 `tools`
-- 工具 CRUD
-- 工具测试接口
+接口：
+
+```text
+GET    /api/tools           工具列表
+POST   /api/tools           创建工具
+GET    /api/tools/{id}      工具详情
+PUT    /api/tools/{id}      更新工具
+DELETE /api/tools/{id}      删除工具
+POST   /api/tools/{id}/test 工具测试
+```
+
+当前已支持：
+
+- 工具表 `tools` 持久化存储
+- HTTP 工具配置（URL、Method、Headers、Query、Body、触发关键词、超时）
+- 工具 CRUD（创建、读取、更新、删除）
+- 工具测试接口（发送实际 HTTP 请求，返回状态码、耗时和输出）
 - Agent 绑定数据库工具
 - 运行时按关键词触发工具调用
+- 内置工具作为 fallback，数据库工具优先
 
 ## 当前限制
 

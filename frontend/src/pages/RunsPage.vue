@@ -37,6 +37,20 @@
           />
         </n-timeline>
 
+        <n-divider v-if="detail.tool_results?.length">工具调用</n-divider>
+        <n-list v-if="detail.tool_results?.length" bordered>
+          <n-list-item v-for="(tool, idx) in detail.tool_results" :key="idx">
+            <n-thing :title="tool.name">
+              <template #header-extra>
+                <n-tag size="small" :type="tool.content && !tool.content.startsWith('Error') ? 'success' : 'error'">
+                  {{ tool.content && !tool.content.startsWith('Error') ? '成功' : '失败' }}
+                </n-tag>
+              </template>
+              <div class="tool-result-content">{{ tool.content }}</div>
+            </n-thing>
+          </n-list-item>
+        </n-list>
+
         <n-divider v-if="detail.citations?.length">引用来源</n-divider>
         <n-list v-if="detail.citations?.length">
           <n-list-item v-for="chunk in detail.citations" :key="chunk.chunk_id">
@@ -128,3 +142,17 @@ onMounted(async () => {
   }
 });
 </script>
+
+<style scoped>
+.tool-result-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px;
+  background: var(--n-color-embedded, #f5f5f5);
+  border-radius: 4px;
+}
+</style>

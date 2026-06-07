@@ -22,6 +22,16 @@ export interface RetrievedChunk {
   content: string;
   score: number;
   source: string;
+  content_type: string;
+  image_url: string;
+  document_id: string;
+  source_uri: string;
+  section_path: string;
+  page_number: number | null;
+  token_count: number;
+  metadata: Record<string, unknown>;
+  vector_score: number;
+  lexical_score: number;
 }
 
 export interface SampleDocument {
@@ -87,6 +97,12 @@ export interface RunSummary {
   created_at: string;
 }
 
+export interface ToolCallResult {
+  tool_id: string;
+  name: string;
+  content: string;
+}
+
 export interface RunDetail extends RunSummary {
   answer: string;
   citations: Array<{
@@ -94,9 +110,20 @@ export interface RunDetail extends RunSummary {
     content: string;
     score: number;
     source: string;
+    content_type: string;
+    image_url: string;
+    document_id: string;
+    source_uri: string;
+    section_path: string;
+    page_number: number | null;
+    token_count: number;
+    metadata: Record<string, unknown>;
+    vector_score: number;
+    lexical_score: number;
   }>;
   steps: Array<{ name: string; status: string; detail: string }>;
   usage: Record<string, unknown>;
+  tool_results: ToolCallResult[];
 }
 
 export interface ModelConfig {

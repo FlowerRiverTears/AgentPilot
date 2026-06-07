@@ -304,8 +304,12 @@ body {
 }
 
 .portal-shell {
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 640px;
   background: var(--page-bg);
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .portal-topbar {
@@ -332,11 +336,12 @@ body {
 }
 
 .portal-page {
-  min-height: calc(100vh - 64px);
+  min-height: 0;
   padding: 24px;
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 16px;
+  overflow: hidden;
 }
 
 .portal-sidebar,
@@ -347,10 +352,12 @@ body {
 }
 
 .portal-sidebar {
+  min-height: 0;
   padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow: auto;
 }
 
 .portal-empty-panel {
@@ -452,8 +459,10 @@ body {
 
 .portal-chat {
   min-width: 0;
+  min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -462,12 +471,13 @@ body {
 }
 
 .chat-thread {
-  min-height: 420px;
+  min-height: 0;
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .chat-empty {
@@ -722,11 +732,12 @@ body {
 
   .portal-page {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     padding: 16px;
   }
 
   .portal-sidebar {
-    min-height: auto;
+    max-height: 220px;
   }
 
   .chat-composer {

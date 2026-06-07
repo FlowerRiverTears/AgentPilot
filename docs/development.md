@@ -69,7 +69,9 @@ npm.cmd run build
 - `/guide`：使用教程
 - `/agents`：智能体后台
 - `/knowledge`：知识库
+- `/tools`：工具管理
 - `/settings/model`：模型配置
+- `/runs`：运行历史
 - `/chat`：运行测试
 - `/portal`：独立前台体验页，刷新后保留会话和上下文
 
@@ -105,8 +107,11 @@ npm.cmd run build
 
 工具入口：
 
-- 后端注册：`backend/app/tools/registry.py`
+- 内置工具注册：`backend/app/tools/registry.py`
+- 数据库持久化工具：`backend/app/repositories/tools.py`
 - 工具列表接口：`GET /api/tools`
+- 工具 CRUD 接口：`POST / PUT / DELETE /api/tools`
+- 工具测试接口：`POST /api/tools/{id}/test`
 - 运行时调用：`backend/app/agents/runtime.py`
 
 ## 回答展示
@@ -122,6 +127,21 @@ npm.cmd run build
 - `<think>...</think>` 折叠为“思考过程”。
 - Markdown 代码块显示为灰色代码框。
 - 清理标题符号和分隔线。
+- Markdown 渲染结果经 DOMPurify 消毒，防止 XSS 攻击。
+
+## 流式输出
+
+前台 `/portal` 使用 SSE（Server-Sent Events）流式输出：
+
+- 后端端点：`POST /api/runs/stream`，返回 `text/event-stream`。
+- 前端使用 `fetch` + `ReadableStream` 逐块读取。
+- 后台 `/chat` 仍使用非流式接口 `POST /api/runs`。
+
+## 路由
+
+前端路由定义在 `frontend/src/router/index.ts`。
+
+- 未匹配路径会重定向到首页（`/:pathMatch(.*)*`）。
 
 ## 主题
 

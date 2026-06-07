@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -21,3 +23,13 @@ class RetrievedChunk(BaseModel):
     content: str
     score: float
     source: str
+    content_type: str = "text"
+    image_url: str = ""
+    document_id: str = ""
+    source_uri: str = ""
+    section_path: str = ""
+    page_number: int | None = None
+    token_count: int = 0
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    vector_score: float = 0.0
+    lexical_score: float = 0.0

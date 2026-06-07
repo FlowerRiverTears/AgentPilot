@@ -1,7 +1,7 @@
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.config import settings
@@ -34,5 +34,12 @@ class DocumentChunk(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(20), default="text", nullable=False)
     source: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_uri: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    section_path: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    chunk_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    image_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(settings.embedding_dimensions))

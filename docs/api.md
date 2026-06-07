@@ -120,7 +120,39 @@ http://localhost:8000/api
 }
 ```
 
+### GET `/knowledge-bases/sample-documents`
+
+获取示例文档列表。返回可用于导入的示例文档。
+
+### POST `/knowledge-bases/{kb_id}/sample-documents/{document_id}`
+
+将示例文档导入到指定知识库。
+
+## Mock 接口
+
+Mock 接口提供模拟数据，用于工具测试和演示。
+
+### GET `/mock/order`
+
+返回模拟订单数据。
+
+### GET `/mock/inventory`
+
+返回模拟库存数据。
+
+### GET `/mock/weather`
+
+返回模拟天气数据。
+
 ## 模型配置
+
+### GET `/settings/model`
+
+获取默认模型配置。返回当前标记为默认的模型配置。
+
+### PUT `/settings/model`
+
+更新默认模型配置。如果没有默认配置则自动创建。
 
 ### GET `/settings/models`
 
@@ -162,12 +194,67 @@ http://localhost:8000/api
 
 ### GET `/tools`
 
-获取可用工具列表。
+获取工具列表。返回数据库中所有已创建的工具，包含内置工具和用户自建的 HTTP 工具。
 
-当前内置：
+### POST `/tools`
 
-- `current_time`
-- `order_lookup`
+创建工具。
+
+请求：
+
+```json
+{
+  "name": "订单查询",
+  "type": "http",
+  "description": "查询订单状态和物流信息",
+  "config": {
+    "url": "http://host.docker.internal:8000/api/mock/order",
+    "method": "GET",
+    "trigger_keywords": ["订单", "物流", "发货", "快递"],
+    "headers": {},
+    "query": {},
+    "body": {},
+    "timeout_seconds": 20
+  },
+  "enabled": true
+}
+```
+
+### GET `/tools/{tool_id}`
+
+获取单个工具详情。
+
+### PUT `/tools/{tool_id}`
+
+更新工具配置。支持部分更新，未传字段保持原值。
+
+### DELETE `/tools/{tool_id}`
+
+删除工具。
+
+### POST `/tools/{tool_id}/test`
+
+测试工具。发送实际 HTTP 请求并返回结果。
+
+请求：
+
+```json
+{
+  "input": {}
+}
+```
+
+返回：
+
+```json
+{
+  "ok": true,
+  "status_code": 200,
+  "elapsed_ms": 128,
+  "output": { ... },
+  "error": ""
+}
+```
 
 ## 运行
 
@@ -231,12 +318,8 @@ http://localhost:8000/api
 - 状态
 - Trace ID
 
-## 第二版计划接口
+## 计划接口
 
-- `POST /tools`
-- `PUT /tools/{id}`
-- `DELETE /tools/{id}`
-- `POST /tools/{id}/test`
 - `POST /auth/login`
 - `POST /auth/logout`
 - `GET /auth/me`

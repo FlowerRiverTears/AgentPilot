@@ -90,12 +90,18 @@
               <div class="retrieval-title">#{{ index + 1 }} {{ chunk.source }}</div>
               <div class="muted">相似度：{{ chunk.score.toFixed(3) }}</div>
             </div>
-            <n-tag type="info" size="small">切片</n-tag>
+            <n-tag :type="chunk.content_type === 'image' ? 'warning' : 'info'" size="small">
+              {{ chunk.content_type === 'image' ? '图片' : '切片' }}
+            </n-tag>
           </div>
-          <div class="retrieval-snippet">
+          <div v-if="chunk.content_type === 'image' && chunk.image_url" class="retrieval-image">
+            <img :src="minioImageUrl(chunk.image_url)" :alt="chunk.content" class="retrieved-img" />
+            <div class="muted">{{ chunk.content }}</div>
+          </div>
+          <div v-else class="retrieval-snippet">
             {{ snippet(chunk.content) }}
           </div>
-          <n-collapse>
+          <n-collapse v-if="chunk.content_type !== 'image'">
             <n-collapse-item title="查看原文" name="raw">
               <pre class="retrieval-raw">{{ chunk.content }}</pre>
             </n-collapse-item>
@@ -234,6 +240,13 @@ function snippet(text: string, limit = 220) {
   return `${normalized.slice(0, limit)}...`;
 }
 
+function minioImageUrl(path: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base = window.location.port === "5173" ? "http://localhost:19000" : "http://localhost:9000";
+  return `${base}${path}`;
+}
+
 async function submit() {
   triedSubmit.value = true;
   const name = form.name.trim();
@@ -364,5 +377,17 @@ onMounted(async () => {
 
 :deep(.selected-row td) {
   background: #eef6ff;
+}
+
+.retrieval-image {
+  margin-top: 8px;
+}
+
+.retrieved-img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 6px;
+  object-fit: contain;
+  margin-bottom: 8px;
 }
 </style>

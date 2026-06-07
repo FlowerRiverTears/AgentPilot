@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from io import BytesIO
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, select, text
@@ -10,6 +12,7 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool
 from app.rag.pipeline import rag_pipeline
+from app.rag.document_loader import ExtractedImage, ParsedDocument
 from app.rag.relevance import lexical_relevance
 from app.rag.text_quality import is_readable_text
 from app.schemas.agents import AgentCreate, AgentRead, AgentRunDetail, AgentRunSummary, AgentUpdate
@@ -21,6 +24,7 @@ from app.llm.gateway import llm_gateway
 class DatabaseStore:
     async def initialize(self) -> None:
         async with AsyncSessionLocal() as session:
+            await self._ensure_rag_standard_columns(session)
             await self._seed_defaults(session)
             await self._backfill_agent_model_configs(session)
             await self._cleanup_unreadable_chunks(session)
@@ -218,22 +222,128 @@ class DatabaseStore:
                 row = DocumentChunk(
                     document_id=document.id,
                     content=chunk.content,
+                    content_type=chunk.content_type,
                     source=filename,
+                    source_uri=chunk.source_uri or filename,
+                    section_path=chunk.section_path,
+                    page_number=chunk.page_number,
+                    token_count=chunk.token_count,
+                    chunk_metadata=chunk.metadata,
+                    image_url=chunk.image_url,
                     embedding=embedding,
                 )
                 session.add(row)
                 await session.flush()
-                stored_chunks.append(
-                    RetrievedChunk(
-                        chunk_id=str(row.id),
-                        content=row.content,
-                        score=0.0,
-                        source=row.source,
-                    )
-                )
+                stored_chunks.append(self._chunk_to_retrieved(row, score=0.0))
 
             await session.commit()
             return stored_chunks
+
+    async def add_document_multimodal(
+        self, kb_id: str, filename: str, parsed: ParsedDocument
+    ) -> list[RetrievedChunk]:
+        kb_uuid = self._maybe_uuid(kb_id)
+        if not kb_uuid:
+            return []
+
+        text_chunks = rag_pipeline.build_chunks(filename, parsed.text)
+        image_chunks = rag_pipeline.build_image_chunks(filename, parsed.images)
+        all_chunks = text_chunks + image_chunks
+
+        if not all_chunks:
+            raise ValueError("No readable chunks were generated from this document")
+
+        async with AsyncSessionLocal() as session:
+            kb = await session.get(KnowledgeBase, kb_uuid)
+            if not kb:
+                return []
+
+            document = Document(knowledge_base_id=kb_uuid, filename=filename, status="indexed")
+            session.add(document)
+            await session.flush()
+
+            image_map: dict[str, str] = {}
+            if parsed.images:
+                image_map = await self._upload_images_to_minio(
+                    filename, document.id, parsed.images
+                )
+
+            stored_chunks: list[RetrievedChunk] = []
+            image_by_chunk_id = {
+                rag_pipeline.build_image_chunk_id(img): img for img in parsed.images
+            }
+            for chunk in all_chunks:
+                image_url = image_map.get(chunk.chunk_id, "")
+
+                if chunk.content_type == "image":
+                    img_data = image_by_chunk_id.get(chunk.chunk_id)
+                    if img_data and embedding_service.multimodal_available:
+                        embedding = await embedding_service.embed_image(img_data.image_bytes)
+                    else:
+                        embedding = await embedding_service.embed_text(chunk.content)
+                else:
+                    embedding = await embedding_service.embed_text(chunk.content)
+
+                row = DocumentChunk(
+                    document_id=document.id,
+                    content=chunk.content,
+                    content_type=chunk.content_type,
+                    source=filename,
+                    source_uri=chunk.source_uri or filename,
+                    section_path=chunk.section_path,
+                    page_number=chunk.page_number,
+                    token_count=chunk.token_count,
+                    chunk_metadata=chunk.metadata,
+                    image_url=image_url,
+                    embedding=embedding,
+                )
+                session.add(row)
+                await session.flush()
+                stored_chunks.append(self._chunk_to_retrieved(row, score=0.0))
+
+            await session.commit()
+            return stored_chunks
+
+    async def _upload_images_to_minio(
+        self, filename: str, document_id, images: list[ExtractedImage]
+    ) -> dict[str, str]:
+        result: dict[str, str] = {}
+        try:
+            from minio import Minio
+            from app.core.config import settings as app_settings
+
+            client = Minio(
+                app_settings.minio_endpoint,
+                access_key=app_settings.minio_access_key,
+                secret_key=app_settings.minio_secret_key,
+                secure=app_settings.minio_secure,
+            )
+            bucket = app_settings.minio_bucket
+            if not client.bucket_exists(bucket):
+                client.make_bucket(bucket)
+
+            base_name = Path(filename).stem
+            for img in images:
+                chunk_key = rag_pipeline.build_image_chunk_id(img)
+                ext = ".png"
+                if img.content_type == "image/jpeg":
+                    ext = ".jpg"
+                object_name = (
+                    f"documents/{document_id}/{base_name}_"
+                    f"p{img.page_number}_img{img.image_index}{ext}"
+                )
+                client.put_object(
+                    bucket,
+                    object_name,
+                    BytesIO(img.image_bytes),
+                    len(img.image_bytes),
+                    content_type=img.content_type,
+                )
+                result[chunk_key] = f"/{bucket}/{object_name}"
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("MinIO upload failed: %s", exc)
+        return result
 
     async def retrieve_chunks(self, kb_id: str, query: str, top_k: int = 5) -> list[RetrievedChunk]:
         kb_uuid = self._maybe_uuid(kb_id)
@@ -243,9 +353,7 @@ class DatabaseStore:
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(
-                    DocumentChunk.id,
-                    DocumentChunk.content,
-                    DocumentChunk.source,
+                    DocumentChunk,
                     DocumentChunk.embedding.cosine_distance(query_embedding).label("distance"),
                 )
                 .join(Document, Document.id == DocumentChunk.document_id)
@@ -255,25 +363,29 @@ class DatabaseStore:
             rows = await session.execute(stmt)
             chunks: list[RetrievedChunk] = []
             seen_contents: set[str] = set()
-            for chunk_id, content, source, distance in rows.all():
+            for row, distance in rows.all():
                 vector_score = round(1.0 - distance, 6)
-                lexical_score = lexical_relevance(query, content)
+                lexical_score = lexical_relevance(query, row.content)
                 score = max(vector_score, lexical_score)
-                if (
-                    vector_score < settings.retrieval_min_score
-                    and lexical_score < settings.retrieval_min_lexical_score
-                ) or not is_readable_text(content):
-                    continue
-                normalized_content = " ".join(content.split())
+                if row.content_type == "text":
+                    if (
+                        vector_score < settings.retrieval_min_score
+                        and lexical_score < settings.retrieval_min_lexical_score
+                    ) or not is_readable_text(row.content):
+                        continue
+                else:
+                    if vector_score < settings.retrieval_min_score:
+                        continue
+                normalized_content = " ".join(row.content.split())
                 if normalized_content in seen_contents:
                     continue
                 seen_contents.add(normalized_content)
                 chunks.append(
-                    RetrievedChunk(
-                        chunk_id=str(chunk_id),
-                        content=content,
+                    self._chunk_to_retrieved(
+                        row,
                         score=score,
-                        source=source,
+                        vector_score=vector_score,
+                        lexical_score=lexical_score,
                     )
                 )
             chunks.sort(key=lambda item: item.score, reverse=True)
@@ -429,6 +541,7 @@ class DatabaseStore:
                         DocumentChunk(
                             document_id=document.id,
                             content=chunk.content,
+                            content_type="text",
                             source=document.filename,
                             embedding=embedding,
                         )
@@ -542,11 +655,31 @@ class DatabaseStore:
             await session.commit()
 
     async def _cleanup_unreadable_chunks(self, session: AsyncSession) -> None:
-        rows = (await session.execute(select(DocumentChunk.id, DocumentChunk.content))).all()
-        unreadable_ids = [chunk_id for chunk_id, content in rows if not is_readable_text(content)]
+        rows = (
+            await session.execute(
+                select(DocumentChunk.id, DocumentChunk.content, DocumentChunk.content_type)
+            )
+        ).all()
+        unreadable_ids = [
+            chunk_id
+            for chunk_id, content, content_type in rows
+            if content_type == "text" and not is_readable_text(content)
+        ]
         if unreadable_ids:
             await session.execute(delete(DocumentChunk).where(DocumentChunk.id.in_(unreadable_ids)))
             await session.commit()
+
+    async def _ensure_rag_standard_columns(self, session: AsyncSession) -> None:
+        statements = [
+            "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS source_uri VARCHAR(500) NOT NULL DEFAULT ''",
+            "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS section_path VARCHAR(500) NOT NULL DEFAULT ''",
+            "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS page_number INTEGER",
+            "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS token_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS chunk_metadata JSON NOT NULL DEFAULT '{}'",
+        ]
+        for statement in statements:
+            await session.execute(text(statement))
+        await session.commit()
 
     async def _resolve_model_config_id(self, model_config_id: str | None) -> str:
         if not model_config_id:
@@ -579,6 +712,30 @@ class DatabaseStore:
             document_count=int(document_count or 0),
         )
 
+    def _chunk_to_retrieved(
+        self,
+        row: DocumentChunk,
+        score: float,
+        vector_score: float = 0.0,
+        lexical_score: float = 0.0,
+    ) -> RetrievedChunk:
+        return RetrievedChunk(
+            chunk_id=str(row.id),
+            document_id=str(row.document_id),
+            content=row.content,
+            score=score,
+            source=row.source,
+            source_uri=row.source_uri or row.source,
+            section_path=row.section_path or "",
+            page_number=row.page_number,
+            token_count=row.token_count or 0,
+            metadata=dict(row.chunk_metadata or {}),
+            content_type=row.content_type,
+            image_url=row.image_url or "",
+            vector_score=vector_score,
+            lexical_score=lexical_score,
+        )
+
     def _run_to_summary(self, run: AgentRun, agent_name: str | None) -> AgentRunSummary:
         usage = run.usage or {}
         return AgentRunSummary(
@@ -609,6 +766,7 @@ class DatabaseStore:
                 for step in steps
             ],
             usage=usage,
+            tool_results=list(usage.get("tool_results", [])),
         )
 
     def _uuid(self, value: str) -> UUID:

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
@@ -8,11 +11,89 @@ class DocumentParseError(ValueError):
     pass
 
 
+@dataclass
+class ExtractedImage:
+    page_number: int
+    image_index: int
+    image_bytes: bytes
+    content_type: str = "image/png"
+
+
+@dataclass
+class ParsedDocument:
+    text: str
+    images: list[ExtractedImage]
+
+
 def extract_upload_text(filename: str, content_type: str | None, raw: bytes) -> str:
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf" or content_type == "application/pdf" or raw.startswith(b"%PDF"):
         return _extract_pdf_text(raw)
     return _extract_plain_text(raw)
+
+
+def extract_upload(filename: str, content_type: str | None, raw: bytes) -> ParsedDocument:
+    suffix = Path(filename).suffix.lower()
+    if suffix == ".pdf" or content_type == "application/pdf" or raw.startswith(b"%PDF"):
+        return _extract_pdf(raw)
+    return ParsedDocument(text=_extract_plain_text(raw), images=[])
+
+
+def _extract_pdf(raw: bytes) -> ParsedDocument:
+    try:
+        reader = PdfReader(BytesIO(raw))
+    except Exception as exc:
+        raise DocumentParseError("PDF 文件无法解析") from exc
+
+    pages: list[str] = []
+    all_images: list[ExtractedImage] = []
+
+    for page_index, page in enumerate(reader.pages, start=1):
+        try:
+            page_text = page.extract_text() or ""
+        except Exception:
+            page_text = ""
+        cleaned = _clean_text(page_text)
+        if cleaned:
+            pages.append(f"第 {page_index} 页\n{cleaned}")
+
+        try:
+            all_images.extend(_extract_page_images(page, page_index))
+        except Exception:
+            pass
+
+    text = "\n\n".join(pages)
+    if not text.strip() and not all_images:
+        raise DocumentParseError("PDF 文件没有可提取的文本或图片，可能是扫描件或图片型 PDF")
+    return ParsedDocument(text=text, images=all_images)
+
+
+def _extract_page_images(page, page_number: int) -> list[ExtractedImage]:
+    images: list[ExtractedImage] = []
+    if not hasattr(page, "images"):
+        return images
+
+    for img_index, img in enumerate(page.images):
+        try:
+            image_bytes = img.data
+            if len(image_bytes) < 1024:
+                continue
+            content_type = "image/png"
+            if hasattr(img, "name") and img.name:
+                ext = Path(img.name).suffix.lower()
+                if ext in (".jpg", ".jpeg"):
+                    content_type = "image/jpeg"
+            images.append(
+                ExtractedImage(
+                    page_number=page_number,
+                    image_index=img_index,
+                    image_bytes=image_bytes,
+                    content_type=content_type,
+                )
+            )
+        except Exception:
+            continue
+    return images
 
 
 def _extract_pdf_text(raw: bytes) -> str:

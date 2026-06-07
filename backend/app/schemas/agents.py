@@ -54,3 +54,4 @@ class AgentRunDetail(AgentRunSummary):
     citations: list[dict] = Field(default_factory=list)
     steps: list[dict[str, str]] = Field(default_factory=list)
     usage: dict = Field(default_factory=dict)
+    tool_results: list[dict[str, str]] = Field(default_factory=list)

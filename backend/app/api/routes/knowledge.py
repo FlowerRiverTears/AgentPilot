@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile
 
-from app.rag.document_loader import DocumentParseError, extract_upload_text
+from app.rag.document_loader import DocumentParseError, extract_upload, extract_upload_text
 from app.rag.sample_documents import SAMPLE_DOCUMENTS
 from app.repositories.memory import store
 from app.schemas.knowledge import (
@@ -35,13 +35,16 @@ async def upload_document(kb_id: str, file: UploadFile) -> list[RetrievedChunk]:
     raw = await file.read()
     filename = file.filename or "uploaded-file"
     try:
-        text = extract_upload_text(filename, file.content_type, raw)
+        parsed = extract_upload(filename, file.content_type, raw)
     except DocumentParseError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if not text.strip():
-        raise HTTPException(status_code=400, detail="Document has no readable text")
+    if not parsed.text.strip() and not parsed.images:
+        raise HTTPException(status_code=400, detail="Document has no readable text or images")
     try:
-        chunks = await store.add_document(kb_id, filename, text)
+        if parsed.images:
+            chunks = await store.add_document_multimodal(kb_id, filename, parsed)
+        else:
+            chunks = await store.add_document(kb_id, filename, parsed.text)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not chunks:

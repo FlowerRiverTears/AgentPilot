@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = "bge-m3"
     embedding_dimensions: int = 1024
+
+    multimodal_embedding_base_url: str = ""
+    multimodal_embedding_api_key: str = ""
+    multimodal_embedding_model: str = ""
+    multimodal_embedding_dimensions: int = 768
+
+    minio_access_key: str = "agentpilot"
+    minio_secret_key: str = "agentpilot123"
+    minio_bucket: str = "agentpilot-images"
+    minio_secure: bool = False
+
     retrieval_min_score: float = 0.3
     retrieval_min_lexical_score: float = 0.3
 

@@ -12,10 +12,27 @@ from app.tools import tool_registry
 
 class AgentRuntime:
     def _format_context(self, retrieved: list[RetrievedChunk]) -> str:
-        return "\n\n".join(
-            f"[来源：{chunk.source}，相似度：{chunk.score:.3f}]\n{chunk.content}"
-            for chunk in retrieved
-        )
+        parts = []
+        for chunk in retrieved:
+            location = []
+            if chunk.page_number:
+                location.append(f"第 {chunk.page_number} 页")
+            if chunk.section_path:
+                location.append(chunk.section_path)
+            location_text = "，".join(location) or "未标注位置"
+            score_text = (
+                f"score={chunk.score:.3f}, vector={chunk.vector_score:.3f}, "
+                f"lexical={chunk.lexical_score:.3f}"
+            )
+            header = (
+                f"[chunk_id={chunk.chunk_id}; source={chunk.source}; "
+                f"location={location_text}; {score_text}]"
+            )
+            if chunk.content_type == "image" and chunk.image_url:
+                parts.append(f"{header}\n{chunk.content}\n图片地址：{chunk.image_url}")
+            else:
+                parts.append(f"{header}\n{chunk.content}")
+        return "\n\n".join(parts)
 
     def _build_messages(
         self,
@@ -25,7 +42,13 @@ class AgentRuntime:
         tool_context: str,
         messages: list[dict[str, str]] | None = None,
     ) -> list[dict[str, str]]:
-        chat_messages: list[dict[str, str]] = [{"role": "system", "content": agent.system_prompt}]
+        system_prompt = (
+            f"{agent.system_prompt}\n\n"
+            "RAG 回答要求：优先依据工具结果和知识库上下文回答；"
+            "使用知识库内容时必须标注来源或 chunk_id；"
+            "上下文不足时明确说明无法从当前资料确认，不要编造。"
+        )
+        chat_messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         if messages:
             chat_messages.extend(
                 {"role": message["role"], "content": message["content"]}
@@ -39,8 +62,7 @@ class AgentRuntime:
                     f"用户问题：{user_input}\n\n"
                     f"知识库上下文：\n{context or '无'}\n\n"
                     f"应用工具结果：\n{tool_context or '无'}\n\n"
-                    "请给出清晰回答。优先使用应用工具结果回答实时业务数据；"
-                    "使用知识库内容时说明来源；如果没有可靠依据，请明确说明无法确认。"
+                    "请给出清晰、简洁、可追溯的回答。"
                 ),
             }
         )
@@ -59,7 +81,12 @@ class AgentRuntime:
         runtime_config = await llm_gateway.get_config()
         return runtime_config.default_model
 
-    async def run(self, agent: AgentRead, user_input: str, messages: list[dict[str, str]] | None = None) -> dict:
+    async def run(
+        self,
+        agent: AgentRead,
+        user_input: str,
+        messages: list[dict[str, str]] | None = None,
+    ) -> dict:
         started_at = perf_counter()
         retrieved = await store.retrieve_for_agent(agent.id, user_input, top_k=3)
         database_tool_results = await tool_store.run_for_input(agent.tool_ids, user_input)
@@ -68,11 +95,13 @@ class AgentRuntime:
 
         context = self._format_context(retrieved)
         tool_context = "\n\n".join(
-            f"工具：{result['name']}\n结果：\n{result['content']}" for result in database_tool_results
+            f"工具：{result['name']}\n结果：\n{result['content']}"
+            for result in database_tool_results
         )
         if not tool_context and fallback_tool_results:
             tool_context = "\n\n".join(
-                f"工具：{result.name}\n结果：\n{result.content}" for result in fallback_tool_results
+                f"工具：{result.name}\n结果：\n{result.content}"
+                for result in fallback_tool_results
             )
         model_name = await self._resolve_model_name(agent)
         chat_messages = self._build_messages(agent, user_input, context, tool_context, messages)
@@ -89,7 +118,7 @@ class AgentRuntime:
             answer = (
                 "真实大模型调用失败，未使用开发模式兜底。\n\n"
                 f"错误信息：{exc}\n\n"
-                "请到模型配置页面点击「测试」，确认接口地址、Token 和模型名是否正确。"
+                "请到模型配置页面确认接口地址、Token 和模型名是否正确。"
             )
         steps = [
             {"name": "接收任务", "status": "完成", "detail": user_input},
@@ -124,7 +153,12 @@ class AgentRuntime:
             ],
         )
 
-    async def stream(self, agent: AgentRead, user_input: str, messages: list[dict[str, str]] | None = None) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        agent: AgentRead,
+        user_input: str,
+        messages: list[dict[str, str]] | None = None,
+    ) -> AsyncIterator[str]:
         started_at = perf_counter()
         retrieved = await store.retrieve_for_agent(agent.id, user_input, top_k=3)
         database_tool_results = await tool_store.run_for_input(agent.tool_ids, user_input)
@@ -133,18 +167,28 @@ class AgentRuntime:
 
         context = self._format_context(retrieved)
         tool_context = "\n\n".join(
-            f"工具：{result['name']}\n结果：\n{result['content']}" for result in database_tool_results
+            f"工具：{result['name']}\n结果：\n{result['content']}"
+            for result in database_tool_results
         )
         if not tool_context and fallback_tool_results:
             tool_context = "\n\n".join(
-                f"工具：{result.name}\n结果：\n{result.content}" for result in fallback_tool_results
+                f"工具：{result.name}\n结果：\n{result.content}"
+                for result in fallback_tool_results
             )
         model_name = await self._resolve_model_name(agent)
 
         steps = [
             {"name": "接收任务", "status": "完成", "detail": user_input},
-            {"name": "知识库检索", "status": "完成", "detail": f"命中 {len(retrieved)} 个文档切片"},
-            {"name": "应用工具调用", "status": "完成", "detail": f"调用 {len(database_tool_results) + len(fallback_tool_results)} 个工具"},
+            {
+                "name": "知识库检索",
+                "status": "完成",
+                "detail": f"命中 {len(retrieved)} 个文档切片",
+            },
+            {
+                "name": "应用工具调用",
+                "status": "完成",
+                "detail": f"调用 {len(database_tool_results) + len(fallback_tool_results)} 个工具",
+            },
         ]
 
         yield f"event: steps\ndata: {json.dumps(steps, ensure_ascii=False)}\n\n"
@@ -169,7 +213,9 @@ class AgentRuntime:
             full_answer = "流式生成失败，请检查模型配置。"
             yield f"data: {json.dumps({'token': full_answer}, ensure_ascii=False)}\n\n"
 
-        steps.append({"name": "大模型生成", "status": generation_status, "detail": f"使用模型：{model_name}"})
+        steps.append(
+            {"name": "大模型生成", "status": generation_status, "detail": f"使用模型：{model_name}"}
+        )
 
         run_data = await store.create_run(
             agent_id=agent.id,
@@ -186,7 +232,10 @@ class AgentRuntime:
             ],
         )
 
-        yield f"event: done\ndata: {json.dumps({'run_id': run_data['run_id'], 'model': model_name, 'duration_ms': run_data['duration_ms']}, ensure_ascii=False)}\n\n"
+        yield (
+            "event: done\n"
+            f"data: {json.dumps({'run_id': run_data['run_id'], 'model': model_name, 'duration_ms': run_data['duration_ms']}, ensure_ascii=False)}\n\n"
+        )
 
 
 agent_runtime = AgentRuntime()
