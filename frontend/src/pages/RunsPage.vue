@@ -10,7 +10,11 @@
         <n-descriptions bordered :column="2" label-placement="left" class="run-detail-desc">
           <n-descriptions-item label="智能体">{{ detail.agent_name }}</n-descriptions-item>
           <n-descriptions-item label="模型">{{ detail.model }}</n-descriptions-item>
-          <n-descriptions-item label="状态">{{ detail.status }}</n-descriptions-item>
+          <n-descriptions-item label="状态">
+            <n-tag :type="detail.status === 'failed' ? 'error' : 'success'" size="small">
+              {{ detail.status === 'failed' ? '失败' : '成功' }}
+            </n-tag>
+          </n-descriptions-item>
           <n-descriptions-item label="耗时">{{ detail.duration_ms ? `${detail.duration_ms}ms` : "-" }}</n-descriptions-item>
           <n-descriptions-item label="创建时间" :span="2">{{ detail.created_at }}</n-descriptions-item>
         </n-descriptions>
@@ -37,6 +41,11 @@
           />
         </n-timeline>
 
+        <n-divider v-if="detail.status === 'failed' || detail.usage?.error">失败原因</n-divider>
+        <n-alert v-if="detail.status === 'failed' || detail.usage?.error" type="error" :bordered="false">
+          {{ detail.usage?.error || '执行失败，请检查模型配置或后端服务' }}
+        </n-alert>
+
         <n-divider v-if="detail.tool_results?.length">工具调用</n-divider>
         <n-list v-if="detail.tool_results?.length" bordered>
           <n-list-item v-for="(tool, idx) in detail.tool_results" :key="idx">
@@ -55,10 +64,19 @@
         <n-list v-if="detail.citations?.length">
           <n-list-item v-for="chunk in detail.citations" :key="chunk.chunk_id">
             <n-thing :title="chunk.source" :description="`相似度：${chunk.score.toFixed(3)}`">
-              <div class="citation-snippet">{{ snippet(chunk.content) }}</div>
+              <div v-if="chunk.content_type === 'image' && chunk.image_url" class="citation-image">
+                <img :src="minioImageUrl(chunk.image_url)" :alt="chunk.content" class="citation-img" />
+                <div class="citation-snippet">{{ snippet(chunk.content) }}</div>
+              </div>
+              <div v-else class="citation-snippet">{{ snippet(chunk.content) }}</div>
             </n-thing>
           </n-list-item>
         </n-list>
+
+        <n-divider />
+        <div class="run-detail-actions">
+          <n-button type="primary" :loading="retrying" @click="handleRetry">重新执行</n-button>
+        </div>
       </template>
     </n-modal>
   </div>
@@ -125,12 +143,34 @@ async function viewDetail(runId: string) {
   }
 }
 
+async function handleRetry() {
+  if (!detail.value) return;
+  retrying.value = true;
+  try {
+    await store.retryRun(detail.value.run_id);
+    message.success("已重新执行，请到运行历史查看结果");
+    showDetail.value = false;
+    await store.loadRuns();
+  } catch {
+    message.error("重试失败，请检查后端服务");
+  } finally {
+    retrying.value = false;
+  }
+}
+
 const answerParts = computed(() => parseAnswerParts(detail.value?.answer ?? ""));
 
 function snippet(text: string, limit = 180) {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (normalized.length <= limit) return normalized;
   return `${normalized.slice(0, limit)}...`;
+}
+
+function minioImageUrl(path: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base = window.location.port === "5173" ? "http://localhost:19000" : "http://localhost:9000";
+  return `${base}${path}`;
 }
 
 onMounted(async () => {
@@ -154,5 +194,11 @@ onMounted(async () => {
   padding: 8px;
   background: var(--n-color-embedded, #f5f5f5);
   border-radius: 4px;
+}
+
+.run-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 </style>

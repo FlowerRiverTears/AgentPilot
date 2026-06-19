@@ -77,7 +77,20 @@
               placeholder="输入要检索的问题"
             />
           </n-form-item>
-          <n-button type="primary" block :loading="retrieving" @click="retrieve">检索</n-button>
+          <n-button type="primary" block :loading="retrieving" @click="retrieve">文本检索</n-button>
+          <n-divider>或上传图片检索（跨模态）</n-divider>
+          <n-upload :max="1" :default-upload="false" accept="image/*" @change="onImageChange">
+            <n-button>选择图片</n-button>
+          </n-upload>
+          <n-button
+            class="action-button"
+            type="primary"
+            block
+            :loading="retrievingByImage"
+            @click="retrieveByImage"
+          >
+            图片检索
+          </n-button>
         </n-form>
       </n-card>
     </div>
@@ -110,6 +123,15 @@
       </div>
       <n-empty v-else description="暂无检索结果" />
     </n-card>
+
+    <n-modal v-model:show="showDocuments" preset="card" title="文档管理" style="max-width: 700px">
+      <n-data-table
+        :columns="documentColumns"
+        :data="documents"
+        :bordered="false"
+        :loading="loadingDocuments"
+      />
+    </n-modal>
   </div>
 </template>
 
@@ -118,6 +140,7 @@ import { computed, h, onMounted, reactive, ref } from "vue";
 import { NButton, NSpace, useDialog, useMessage, type DataTableColumns, type UploadFileInfo } from "naive-ui";
 
 import type { KnowledgeBase, RetrievedChunk } from "../api/types";
+import { api } from "../api/client";
 import { useWorkspaceStore } from "../stores/workspace";
 
 const message = useMessage();
@@ -129,6 +152,8 @@ const creating = ref(false);
 const uploading = ref(false);
 const importingSample = ref(false);
 const retrieving = ref(false);
+const retrievingByImage = ref(false);
+const selectedImageFile = ref<File | null>(null);
 const selectedKbId = ref<string | null>(null);
 const selectedSampleDocumentId = ref<string | null>(null);
 const selectedFile = ref<File | null>(null);
@@ -194,6 +219,15 @@ const columns: DataTableColumns<KnowledgeBase> = [
               NButton,
               {
                 size: "small",
+                secondary: true,
+                onClick: () => openDocuments(row)
+              },
+              { default: () => "文档" }
+            ),
+            h(
+              NButton,
+              {
+                size: "small",
                 type: "error",
                 secondary: true,
                 onClick: () => confirmDelete(row)
@@ -230,6 +264,10 @@ function onChecked(keys: Array<string | number>) {
 
 function onFileChange(options: { fileList: UploadFileInfo[] }) {
   selectedFile.value = (options.fileList[0]?.file as File | undefined) ?? null;
+}
+
+function onImageChange(options: { fileList: UploadFileInfo[] }) {
+  selectedImageFile.value = (options.fileList[0]?.file as File | undefined) ?? null;
 }
 
 function snippet(text: string, limit = 220) {
@@ -339,6 +377,37 @@ async function retrieve() {
     console.error(error);
   } finally {
     retrieving.value = false;
+  }
+}
+
+async function retrieveByImage() {
+  if (!selectedKbId.value) {
+    message.warning("请先选择知识库");
+    return;
+  }
+  if (!selectedImageFile.value) {
+    message.warning("请先选择图片");
+    return;
+  }
+
+  retrievingByImage.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("file", selectedImageFile.value);
+    const response = await api.post<RetrievedChunk[]>(
+      `/knowledge-bases/${selectedKbId.value}/retrieve-by-image`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    retrieved.value = response.data;
+    if (!retrieved.value.length) {
+      message.info("没有检索到内容，请先上传含图片的文档");
+    }
+  } catch (error) {
+    message.error("图片检索失败，请确认已配置多模态 Embedding 服务");
+    console.error(error);
+  } finally {
+    retrievingByImage.value = false;
   }
 }
 

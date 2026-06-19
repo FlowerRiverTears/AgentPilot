@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "AgentPilot"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     api_prefix: str = "/api"
     environment: str = "local"
 
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://agentpilot:agentpilot@localhost:5432/agentpilot"
     redis_url: str = "redis://localhost:6379/0"
-    minio_endpoint: str = "localhost:9000"
+    minio_endpoint: str = "localhost:19000"
 
     llm_base_url: str = "http://localhost:11434/v1"
     llm_api_key: str = "ollama"
@@ -38,6 +38,14 @@ class Settings(BaseSettings):
 
     retrieval_min_score: float = 0.3
     retrieval_min_lexical_score: float = 0.3
+
+    # 鉴权配置
+    jwt_secret_key: str = "agentpilot-dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24小时
+    auth_enabled: bool = True  # 是否启用鉴权，方便开发时关闭
+    admin_username: str = "admin"
+    admin_password: str = "admin123"  # 初始管理员密码
 
 
 settings = Settings()

@@ -4,11 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
+from app.api.routes.auth import seed_admin_user
 from app.core.aspects import AspectMiddleware
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
-from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool
+from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool, ToolCall, User
 from app.repositories.memory import store
 
 
@@ -16,6 +17,7 @@ from app.repositories.memory import store
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await seed_admin_user()
     await store.initialize()
     yield
 

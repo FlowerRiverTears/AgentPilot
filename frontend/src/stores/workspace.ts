@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type {
   Agent,
   ChatMessage,
+  DocumentInfo,
   KnowledgeBase,
   ModelConfig,
   ModelConfigTestResult,
@@ -109,6 +110,13 @@ export const useWorkspaceStore = defineStore("workspace", {
       await this.loadKnowledgeBases();
       return response.data;
     },
+    async loadDocuments(kbId: string) {
+      const response = await api.get<DocumentInfo[]>(`/knowledge-bases/${kbId}/documents`);
+      return response.data;
+    },
+    async deleteDocument(kbId: string, docId: string) {
+      await api.delete(`/knowledge-bases/${kbId}/documents/${docId}`);
+    },
     async loadSampleDocuments() {
       const response = await api.get<SampleDocument[]>("/knowledge-bases/sample-documents");
       this.sampleDocuments = response.data;
@@ -165,6 +173,11 @@ export const useWorkspaceStore = defineStore("workspace", {
     },
     async getRun(runId: string) {
       const response = await api.get<RunDetail>(`/runs/${runId}`);
+      return response.data;
+    },
+    async retryRun(runId: string) {
+      const response = await api.post<RunResult>(`/runs/${runId}/retry`);
+      this.lastRun = response.data;
       return response.data;
     },
     async reloadForRunPage() {

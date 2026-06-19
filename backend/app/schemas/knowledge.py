@@ -33,3 +33,11 @@ class RetrievedChunk(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     vector_score: float = 0.0
     lexical_score: float = 0.0
+
+
+class DocumentRead(BaseModel):
+    id: str
+    knowledge_base_id: str
+    filename: str
+    status: str
+    created_at: str

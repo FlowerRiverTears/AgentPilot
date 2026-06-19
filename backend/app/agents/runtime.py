@@ -106,6 +106,7 @@ class AgentRuntime:
         model_name = await self._resolve_model_name(agent)
         chat_messages = self._build_messages(agent, user_input, context, tool_context, messages)
         generation_status = "完成"
+        error_message = ""
         try:
             answer = await llm_gateway.chat(
                 chat_messages,
@@ -115,6 +116,7 @@ class AgentRuntime:
             )
         except RuntimeError as exc:
             generation_status = "失败"
+            error_message = str(exc)
             answer = (
                 "真实大模型调用失败，未使用开发模式兜底。\n\n"
                 f"错误信息：{exc}\n\n"
@@ -134,6 +136,7 @@ class AgentRuntime:
             },
             {"name": "大模型生成", "status": generation_status, "detail": f"使用模型：{model_name}"},
         ]
+        run_status = "failed" if generation_status == "失败" else "completed"
         return await store.create_run(
             agent_id=agent.id,
             user_input=user_input,
@@ -141,6 +144,7 @@ class AgentRuntime:
             citations=retrieved,
             steps=steps,
             model=model_name,
+            status=run_status,
             duration_ms=int((perf_counter() - started_at) * 1000),
             tool_results=database_tool_results
             + [
@@ -151,6 +155,7 @@ class AgentRuntime:
                 }
                 for result in fallback_tool_results
             ],
+            error=error_message or None,
         )
 
     async def stream(

@@ -31,7 +31,7 @@
 - [x] 新增 HTTP 工具。
 - [x] 配置 URL、Method、Headers、Query、Body。
 - [x] 工具测试接口。
-- [ ] 工具调用日志。
+- [x] 工具调用日志。
 - [x] 智能体绑定真实工具。
 
 ### P2 运行历史
@@ -56,6 +56,7 @@
 - [x] 会话保留。
 - [ ] 回答重试。
 - [ ] 更清晰的错误提示。
+- [ ] Mermaid.js 图表渲染：智能体回答中的 ` ```mermaid ` 代码块自动渲染为流程图、时序图、甘特图等可视化图表。
 
 ### P5 检索增强
 
@@ -63,13 +64,22 @@
 - [x] 过滤乱码、二进制残留和重复片段。
 - [x] 过滤低相关上下文。
 - [x] 中文关键词匹配兜底。
-- [ ] 文档级管理和单文档删除。
+- [x] 文档级管理和单文档删除。
 - [ ] OCR 支持扫描件 PDF。
-- [ ] 多模态 Embedding：接入 CLIP 等统一向量空间模型，文本和图片在同一向量空间中检索。
-- [ ] 图片提取：PDF 中的图片独立提取、切块和向量化，图片存入 MinIO。
-- [ ] 跨模态检索：文本查图片、图片查文本。
-- [ ] document_chunks 表增加 content_type 和 image_url 字段。
-- [ ] Embedding 服务增加 embed_image 方法，支持图片向量化。
+- [x] 多模态 Embedding：接入 CLIP 等统一向量空间模型，文本和图片在同一向量空间中检索。
+- [x] 图片提取：PDF 中的图片独立提取、切块和向量化，图片存入 MinIO。
+- [x] 跨模态检索：文本查图片、图片查文本。
+- [x] document_chunks 表增加 content_type 和 image_url 字段。
+- [x] Embedding 服务增加 embed_image 方法，支持图片向量化。
+
+### P6 对话与智能体增强
+
+- [ ] 对话记忆管理：查看历史会话列表、删除会话、会话搜索。
+- [ ] 上下文压缩（滑动窗口 + 摘要）：长对话自动压缩早期上下文，控制 Token 消耗和响应耗时。
+- [ ] 多知识库绑定：一个智能体绑定多个知识库，检索时合并结果。
+- [ ] 智能体导入/导出：JSON 格式导出智能体配置，跨环境迁移。
+- [ ] 回答反馈：用户对回答点赞/点踩，记录到数据库，作为智能体质量评估的数据基础。
+- [ ] Prompt 模板库：预置常用系统提示词模板，一键套用，降低创建智能体门槛。
 
 ## 第二版验收流程
 
@@ -89,3 +99,159 @@
 - Agent Studio 工作流画布。
 - 大规模分布式调度。
 - 自动优化和评测闭环。
+
+---
+
+## v3.0 远期规划
+
+### 中期增强（P7-P8）
+
+- [ ] 多轮对话上下文窗口：可配置上下文轮数、Token 上限、摘要压缩，长对话不丢上下文且控制成本。
+- [ ] 工具调用链：一个问题触发多个工具，串行/并行编排（如查订单→查物流→查库存）。
+- [ ] OCR 支持：扫描件 PDF 用 PaddleOCR/Tesseract 提取文字。
+- [ ] 智能体评测：用测试集自动跑评测，输出准确率/召回率。
+- [ ] WebSocket 实时通信：替代 SSE，支持双向通信，工具调用进度实时推送。
+- [ ] 文件上传对话：前台用户上传文件，智能体即时分析。
+
+### 远期方向（P9+）
+
+- [ ] 工作流画布：可视化编排多步骤 Agent 流程（类 Dify/Coze）。
+- [ ] 多 Agent 协作：多个智能体分工协作，主 Agent 调度子 Agent。
+- [ ] RAG 调优面板：可视化调整 chunk_size、overlap、检索阈值，针对不同语料优化检索效果。
+- [ ] 向量数据库切换：支持 Milvus/Qdrant/Chroma 等专业向量库，大规模场景性能保障。
+- [ ] 多租户与计费：租户隔离、API 调用计量、额度管理，SaaS 化运营。
+- [ ] 插件市场：社区贡献工具和 Prompt 模板，生态扩展。
+
+---
+
+## P6 上下文压缩详细设计
+
+### 问题背景
+
+随着对话轮次增加，前端传入的 `messages` 列表无限增长，导致：
+1. **Token 消耗线性增长**：每轮对话的完整历史都被发送给 LLM，成本随轮次递增。
+2. **响应耗时增加**：输入 Token 越多，LLM 首 Token 延迟越高。
+3. **超出上下文窗口**：长对话可能超出模型上下文限制（如 200K Token），导致 API 调用失败。
+4. **信息冗余**：早期对话的细节对当前回答价值递减，但仍在消耗 Token。
+
+### 方案选型
+
+| 方案 | 触发条件 | 优点 | 缺点 |
+|------|----------|------|------|
+| A. Token 阈值压缩 | 累计 Token 超过阈值 | 精确可控 | 需实时 Token 计数 |
+| B. 轮次阈值压缩 | 对话轮次超过 N 轮 | 实现最简单 | 粗糙，短/长对话一视同仁 |
+| C. 耗时压缩 | 单次 LLM 响应耗时超阈值 | 间接反映上下文大小 | 不精确，受网络/负载影响 |
+| **D. 滑动窗口+摘要** | Token 超过阈值时触发 | 兼顾近期细节和远期记忆 | 实现复杂度中等 |
+| E. 渐进式压缩 | 每轮轻压缩+阈值强压缩 | 平滑过渡 | 实现最复杂 |
+
+**选定方案：D. 滑动窗口 + 摘要**（Claude Code / Cursor 同款策略）
+
+### 核心设计
+
+```
+压缩前（20轮对话）:
+[sys] [u1][a1] [u2][a2] ... [u14][a14] [u15][a15] ... [u20][a20]
+
+压缩后:
+[sys] [摘要: 第1-14轮的关键信息] [u15][a15] ... [u20][a20]
+       ↑ LLM 生成的摘要              ↑ 最近6轮保留原文
+```
+
+#### 1. Token 估算
+
+在 `_build_messages()` 中，发送给 LLM 前估算总 Token 数：
+
+```python
+def _estimate_messages_tokens(self, messages: list[dict]) -> int:
+    """粗估消息列表的 Token 数。中文约 1 字 ≈ 1.5 Token，英文约 4 字符 ≈ 1 Token。"""
+    total = 0
+    for msg in messages:
+        content = msg.get("content", "")
+        chinese_chars = sum(1 for c in content if "\u4e00" <= c <= "\u9fff")
+        other_chars = len(content) - chinese_chars
+        total += int(chinese_chars * 1.5 + other_chars / 4)
+    return total
+```
+
+#### 2. 压缩触发
+
+```python
+# 配置项（可通过环境变量覆盖）
+CONTEXT_WINDOW_RATIO = 0.6   # Token 使用率达到上下文窗口的 60% 时触发压缩
+RECENT_TURNS = 6              # 保留最近 6 轮对话原文（12 条消息）
+```
+
+#### 3. 摘要生成
+
+当 Token 估算超过阈值时：
+1. 分离早期消息（第 1 轮 ~ 第 N-6 轮）和近期消息（最近 6 轮）。
+2. 调用 LLM 对早期消息生成摘要：
+
+```
+System: 你是一个对话摘要助手。请将以下对话历史压缩为一段简洁的摘要，
+       保留关键事实、决策和上下文信息，去除重复和无关细节。
+       摘要应能让后续对话理解之前的讨论内容。
+
+User: 以下是对话历史：
+      用户：xxx
+      助手：xxx
+      ...
+      请生成摘要。
+```
+
+3. 将摘要作为一条 `system` 角色消息插入，替换早期对话原文。
+4. 摘要缓存到数据库，避免重复生成。
+
+#### 4. 摘要缓存
+
+在 `agent_runs` 表或新建 `conversation_summaries` 表中存储摘要：
+
+```sql
+CREATE TABLE conversation_summaries (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    agent_id    UUID NOT NULL REFERENCES agents(id),
+    session_id  VARCHAR(64) NOT NULL,       -- 前端生成的会话 ID
+    summary     TEXT NOT NULL,               -- LLM 生成的摘要
+    from_turn   INTEGER NOT NULL,            -- 摘要覆盖的起始轮次
+    to_turn     INTEGER NOT NULL,            -- 摘要覆盖的结束轮次
+    token_count INTEGER NOT NULL,            -- 摘要的 Token 数
+    created_at  TIMESTAMP DEFAULT now()
+);
+
+CREATE INDEX idx_conv_summaries_session ON conversation_summaries(agent_id, session_id);
+```
+
+#### 5. 消息构建流程（更新后）
+
+```
+_build_messages():
+  1. 组装 system prompt + 历史消息 + 当前用户消息
+  2. 估算总 Token 数
+  3. if 总 Token < 上下文窗口 × 60%:
+       → 原样返回
+  4. else:
+       → 分离早期消息和近期消息（最近 6 轮）
+       → 查缓存：是否已有该 session 的摘要覆盖早期轮次
+       → 无缓存：调用 LLM 生成摘要，写入缓存
+       → 有缓存但未覆盖全部早期轮次：增量生成摘要，合并后写入缓存
+       → 构建压缩后的消息列表：[sys] + [摘要] + [近期6轮] + [当前用户消息]
+       → 返回压缩后的消息列表
+```
+
+#### 6. 前端配合
+
+- 前端在每次请求时传入 `session_id`，用于关联摘要缓存。
+- 前端可在对话界面显示"上下文已压缩"提示，让用户感知压缩行为。
+- 前端保留完整的本地消息列表，压缩仅影响发送给 LLM 的内容。
+
+### 配置项
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `CONTEXT_WINDOW_RATIO` | 0.6 | Token 使用率达到上下文窗口的多少时触发压缩 |
+| `RECENT_TURNS` | 6 | 压缩时保留最近几轮对话原文 |
+| `SUMMARY_MAX_TOKENS` | 500 | 摘要的最大 Token 数 |
+
+### 不采用耗时压缩的原因
+
+耗时受网络波动、模型负载、排队等外部因素影响，不是上下文大小的可靠指标。但耗时可作为辅助信号——如果单次响应耗时异常增长，可在运行记录中标记警告，提示用户考虑压缩或开启新会话。

@@ -9,8 +9,9 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
-from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool
+from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool, User
 from app.rag.pipeline import rag_pipeline
 from app.rag.document_loader import ExtractedImage, ParsedDocument
 from app.rag.relevance import lexical_relevance
@@ -25,6 +26,7 @@ class DatabaseStore:
     async def initialize(self) -> None:
         async with AsyncSessionLocal() as session:
             await self._ensure_rag_standard_columns(session)
+            await self._ensure_default_user(session)
             await self._seed_defaults(session)
             await self._backfill_agent_model_configs(session)
             await self._cleanup_unreadable_chunks(session)
@@ -197,6 +199,42 @@ class DatabaseStore:
                     config["knowledge_base_ids"] = knowledge_base_ids
                     agent.config = config
 
+            await session.commit()
+            return True
+
+    async def list_documents(self, kb_id: str) -> list[dict]:
+        """列出知识库下的所有文档。"""
+        kb_uuid = self._maybe_uuid(kb_id)
+        if not kb_uuid:
+            return []
+        async with AsyncSessionLocal() as session:
+            rows = (
+                await session.execute(
+                    select(Document).where(Document.knowledge_base_id == kb_uuid).order_by(Document.created_at.desc())
+                )
+            ).scalars().all()
+            return [
+                {
+                    "id": str(doc.id),
+                    "knowledge_base_id": str(doc.knowledge_base_id),
+                    "filename": doc.filename,
+                    "status": doc.status,
+                    "created_at": doc.created_at.isoformat() if doc.created_at else "",
+                }
+                for doc in rows
+            ]
+
+    async def delete_document(self, kb_id: str, doc_id: str) -> bool:
+        """删除单个文档及其所有切片。"""
+        doc_uuid = self._maybe_uuid(doc_id)
+        if not doc_uuid:
+            return False
+        async with AsyncSessionLocal() as session:
+            doc = await session.get(Document, doc_uuid)
+            if not doc or str(doc.knowledge_base_id) != kb_id:
+                return False
+            await session.execute(delete(DocumentChunk).where(DocumentChunk.document_id == doc_uuid))
+            await session.execute(delete(Document).where(Document.id == doc_uuid))
             await session.commit()
             return True
 
@@ -391,6 +429,45 @@ class DatabaseStore:
             chunks.sort(key=lambda item: item.score, reverse=True)
             return chunks[:top_k]
 
+    async def retrieve_by_image(self, kb_id: str, image_bytes: bytes, top_k: int = 5) -> list[RetrievedChunk]:
+        """跨模态检索：用图片查询知识库中的文本块和图片块。"""
+        kb_uuid = self._maybe_uuid(kb_id)
+        if not kb_uuid:
+            return []
+        query_embedding = await embedding_service.embed_image(image_bytes)
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(
+                    DocumentChunk,
+                    DocumentChunk.embedding.cosine_distance(query_embedding).label("distance"),
+                )
+                .join(Document, Document.id == DocumentChunk.document_id)
+                .where(Document.knowledge_base_id == kb_uuid)
+                .order_by(text("distance ASC"))
+            )
+            rows = await session.execute(stmt)
+            chunks: list[RetrievedChunk] = []
+            seen_contents: set[str] = set()
+            for row, distance in rows.all():
+                vector_score = round(1.0 - distance, 6)
+                if vector_score < settings.retrieval_min_score:
+                    continue
+                if row.content_type == "text" and not is_readable_text(row.content):
+                    continue
+                normalized_content = " ".join(row.content.split())
+                if normalized_content in seen_contents:
+                    continue
+                seen_contents.add(normalized_content)
+                chunks.append(
+                    self._chunk_to_retrieved(
+                        row,
+                        score=vector_score,
+                        vector_score=vector_score,
+                    )
+                )
+            chunks.sort(key=lambda item: item.score, reverse=True)
+            return chunks[:top_k]
+
     async def retrieve_for_agent(self, agent_id: str, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         agent = await self.get_agent(agent_id)
         if not agent:
@@ -432,9 +509,19 @@ class DatabaseStore:
         status: str = "completed",
         duration_ms: int | None = None,
         tool_results: list[dict] | None = None,
+        error: str | None = None,
     ) -> dict:
         citation_list = list(citations)
         tool_result_list = tool_results or []
+        usage: dict = {
+            "model": model,
+            "duration_ms": duration_ms,
+            "citation_count": len(citation_list),
+            "citations": [chunk.model_dump() for chunk in citation_list],
+            "tool_results": tool_result_list,
+        }
+        if error:
+            usage["error"] = error
         async with AsyncSessionLocal() as session:
             run = AgentRun(
                 agent_id=self._uuid(agent_id),
@@ -442,13 +529,7 @@ class DatabaseStore:
                 input=user_input,
                 output=answer,
                 trace_id=str(uuid4()),
-                usage={
-                    "model": model,
-                    "duration_ms": duration_ms,
-                    "citation_count": len(citation_list),
-                    "citations": [chunk.model_dump() for chunk in citation_list],
-                    "tool_results": tool_result_list,
-                },
+                usage=usage,
             )
             session.add(run)
             await session.flush()
@@ -475,6 +556,7 @@ class DatabaseStore:
                 "citations": [chunk.model_dump() for chunk in citation_list],
                 "steps": steps,
                 "tool_results": tool_result_list,
+                "usage": usage,
             }
 
     async def list_runs(self, limit: int = 50) -> list[AgentRunSummary]:
@@ -679,6 +761,19 @@ class DatabaseStore:
         ]
         for statement in statements:
             await session.execute(text(statement))
+        await session.commit()
+
+    async def _ensure_default_user(self, session: AsyncSession) -> None:
+        user_count = await session.scalar(select(func.count()).select_from(User))
+        if user_count:
+            return
+        admin = User(
+            username=settings.admin_username,
+            password_hash=hash_password(settings.admin_password),
+            role="admin",
+            status="active",
+        )
+        session.add(admin)
         await session.commit()
 
     async def _resolve_model_config_id(self, model_config_id: str | None) -> str:

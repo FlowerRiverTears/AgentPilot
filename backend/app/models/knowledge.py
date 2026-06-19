@@ -42,4 +42,7 @@ class DocumentChunk(Base, TimestampMixin):
     token_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     chunk_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     image_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(Vector(settings.embedding_dimensions))
+    # 多模态启用时统一使用多模态维度，确保文本和图片在同一向量空间
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(settings.multimodal_embedding_dimensions if settings.multimodal_embedding_model else settings.embedding_dimensions)
+    )

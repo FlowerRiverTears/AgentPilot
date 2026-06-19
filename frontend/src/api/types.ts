@@ -124,6 +124,15 @@ export interface RunDetail extends RunSummary {
   steps: Array<{ name: string; status: string; detail: string }>;
   usage: Record<string, unknown>;
   tool_results: ToolCallResult[];
+  error?: string;
+}
+
+export interface DocumentInfo {
+  id: string;
+  knowledge_base_id: string;
+  filename: string;
+  status: string;
+  created_at: string;
 }
 
 export interface ModelConfig {

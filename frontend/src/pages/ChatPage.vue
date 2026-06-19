@@ -56,7 +56,13 @@
         <n-list v-if="store.lastRun?.citations.length">
           <n-list-item v-for="chunk in store.lastRun.citations" :key="chunk.chunk_id">
             <n-thing :title="chunk.source" :description="`相似度：${chunk.score.toFixed(3)}`">
-              <div class="citation-snippet">
+              <div v-if="chunk.content_type === 'image' && chunk.image_url" class="citation-image">
+                <img :src="minioImageUrl(chunk.image_url)" :alt="chunk.content" class="citation-img" />
+                <div class="citation-snippet">
+                  {{ snippet(chunk.content) }}
+                </div>
+              </div>
+              <div v-else class="citation-snippet">
                 {{ snippet(chunk.content) }}
               </div>
             </n-thing>
@@ -124,6 +130,13 @@ function snippet(text: string, limit = 180) {
     return normalized;
   }
   return `${normalized.slice(0, limit)}...`;
+}
+
+function minioImageUrl(path: string) {
+  if (!path) return "";
+  if (path.startsWith("http")) return path;
+  const base = window.location.port === "5173" ? "http://localhost:19000" : "http://localhost:9000";
+  return `${base}${path}`;
 }
 
 const answerText = computed(() => cleanAnswerText(store.lastRun?.answer ?? ""));

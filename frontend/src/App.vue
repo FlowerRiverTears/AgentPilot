@@ -18,6 +18,7 @@
                 <n-button secondary @click="ui.toggleTheme">
                   {{ ui.theme === "dark" ? "亮色" : "深色" }}
                 </n-button>
+                <n-button v-if="auth.isAuthenticated" secondary @click="handleLogout">退出登录</n-button>
                 <n-button secondary @click="goPortal">进入前台</n-button>
               </div>
             </n-layout-header>
@@ -36,12 +37,14 @@ import { computed, h, onMounted } from "vue";
 import { darkTheme } from "naive-ui";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
+import { useAuthStore } from "./stores/auth";
 import { useUiStore } from "./stores/ui";
 
 const route = useRoute();
 const router = useRouter();
 const ui = useUiStore();
-const isPortalRoute = computed(() => route.path === "/portal");
+const auth = useAuthStore();
+const isPortalRoute = computed(() => route.path === "/portal" || route.path === "/login");
 const naiveTheme = computed(() => (ui.theme === "dark" ? darkTheme : null));
 
 const menuOptions = [
@@ -67,6 +70,11 @@ function go(path: string) {
 
 function goPortal() {
   router.push("/portal");
+}
+
+function handleLogout() {
+  auth.logout();
+  router.push("/login");
 }
 
 onMounted(() => {

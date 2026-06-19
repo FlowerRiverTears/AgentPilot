@@ -7,7 +7,7 @@ import httpx
 from sqlalchemy import select
 
 from app.db.session import AsyncSessionLocal
-from app.models import Tool
+from app.models import Tool, ToolCall
 from app.schemas.tools import ToolCreate, ToolRead, ToolTestRequest, ToolTestResult, ToolUpdate
 
 
@@ -109,12 +109,15 @@ class ToolStore:
             elapsed_ms = int((perf_counter() - start) * 1000)
             return ToolTestResult(ok=False, elapsed_ms=elapsed_ms, error=str(exc))
 
-    async def run_for_input(self, enabled_tool_ids: list[str], user_input: str) -> list[dict[str, str]]:
+    async def run_for_input(
+        self, enabled_tool_ids: list[str], user_input: str, run_id: str | None = None
+    ) -> list[dict[str, str]]:
         enabled = {self._maybe_uuid(tool_id) for tool_id in enabled_tool_ids}
         enabled.discard(None)
         if not enabled:
             return []
 
+        run_uuid = self._maybe_uuid(run_id) if run_id else None
         text = user_input.lower()
         results: list[dict[str, str]] = []
         async with AsyncSessionLocal() as session:
@@ -138,8 +141,46 @@ class ToolStore:
                     "content": str(content),
                 }
             )
+            async with AsyncSessionLocal() as session:
+                session.add(
+                    ToolCall(
+                        run_id=run_uuid,
+                        tool_id=tool.id,
+                        tool_name=tool.name,
+                        input=user_input,
+                        output=str(content),
+                        status="success" if test_result.ok else "failed",
+                        status_code=test_result.status_code,
+                        elapsed_ms=test_result.elapsed_ms,
+                        error=test_result.error or "",
+                        detail={"ok": test_result.ok},
+                    )
+                )
+                await session.commit()
 
         return results
+
+    async def list_tool_calls(self, limit: int = 50) -> list[dict]:
+        async with AsyncSessionLocal() as session:
+            rows = (
+                await session.execute(select(ToolCall).order_by(ToolCall.created_at.desc()).limit(limit))
+            ).scalars().all()
+            return [
+                {
+                    "id": str(row.id),
+                    "run_id": str(row.run_id) if row.run_id else None,
+                    "tool_id": str(row.tool_id) if row.tool_id else None,
+                    "tool_name": row.tool_name,
+                    "input": row.input,
+                    "output": row.output,
+                    "status": row.status,
+                    "status_code": row.status_code,
+                    "elapsed_ms": row.elapsed_ms,
+                    "error": row.error,
+                    "created_at": row.created_at.isoformat() if row.created_at else "",
+                }
+                for row in rows
+            ]
 
     def _to_read(self, tool: Tool) -> ToolRead:
         return ToolRead(
