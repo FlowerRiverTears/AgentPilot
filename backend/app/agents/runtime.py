@@ -205,6 +205,7 @@ class AgentRuntime:
 
         full_answer = ""
         generation_status = "完成"
+        error_message = ""
         try:
             async for token in llm_gateway.stream_chat(
                 chat_messages,
@@ -213,8 +214,9 @@ class AgentRuntime:
             ):
                 full_answer += token
                 yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
-        except Exception:
+        except Exception as exc:
             generation_status = "失败"
+            error_message = str(exc)
             full_answer = "流式生成失败，请检查模型配置。"
             yield f"data: {json.dumps({'token': full_answer}, ensure_ascii=False)}\n\n"
 
@@ -222,6 +224,7 @@ class AgentRuntime:
             {"name": "大模型生成", "status": generation_status, "detail": f"使用模型：{model_name}"}
         )
 
+        run_status = "failed" if generation_status == "失败" else "completed"
         run_data = await store.create_run(
             agent_id=agent.id,
             user_input=user_input,
@@ -229,12 +232,14 @@ class AgentRuntime:
             citations=retrieved,
             steps=steps,
             model=model_name,
+            status=run_status,
             duration_ms=int((perf_counter() - started_at) * 1000),
             tool_results=database_tool_results
             + [
                 {"tool_id": r.tool_id, "name": r.name, "content": r.content}
                 for r in fallback_tool_results
             ],
+            error=error_message or None,
         )
 
         yield (

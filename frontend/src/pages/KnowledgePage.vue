@@ -160,6 +160,32 @@ const selectedFile = ref<File | null>(null);
 const query = ref("");
 const retrieved = ref<RetrievedChunk[]>([]);
 const triedSubmit = ref(false);
+const showDocuments = ref(false);
+const documents = ref<any[]>([]);
+const loadingDocuments = ref(false);
+
+const documentColumns: DataTableColumns<any> = [
+  { title: "文件名", key: "filename" },
+  { title: "切片数", key: "chunk_count" },
+  {
+    title: "创建时间",
+    key: "created_at",
+    render(row) {
+      try { return new Date(row.created_at).toLocaleString("zh-CN"); } catch { return row.created_at; }
+    }
+  },
+  {
+    title: "操作",
+    key: "actions",
+    render(row) {
+      return h(
+        NButton,
+        { size: "small", type: "error", secondary: true, onClick: () => confirmDeleteDocument(row) },
+        { default: () => "删除" }
+      );
+    }
+  }
+];
 
 const kbOptions = computed(() =>
   store.knowledgeBases.map((item) => ({ label: item.name, value: item.id }))
@@ -424,6 +450,39 @@ function confirmDelete(row: KnowledgeBase) {
       }
       retrieved.value = [];
       message.success("知识库已删除");
+    }
+  });
+}
+
+async function openDocuments(kb: KnowledgeBase) {
+  showDocuments.value = true;
+  loadingDocuments.value = true;
+  try {
+    const response = await api.get(`/knowledge-bases/${kb.id}/documents`);
+    documents.value = response.data;
+  } catch {
+    message.error("加载文档列表失败");
+  } finally {
+    loadingDocuments.value = false;
+  }
+}
+
+function confirmDeleteDocument(doc: any) {
+  dialog.warning({
+    title: "删除文档",
+    content: `确认删除「${doc.filename}」吗？该文档的所有切片将被清除。`,
+    positiveText: "确认删除",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      try {
+        const currentKbId = selectedKbId.value;
+        await api.delete(`/knowledge-bases/${currentKbId}/documents/${doc.id}`);
+        message.success("文档已删除");
+        documents.value = documents.value.filter((d: any) => d.id !== doc.id);
+        await store.loadKnowledgeBases();
+      } catch {
+        message.error("删除文档失败");
+      }
     }
   });
 }

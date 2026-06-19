@@ -95,6 +95,7 @@ const store = useWorkspaceStore();
 const loading = ref(false);
 const showDetail = ref(false);
 const detail = ref<RunDetail | null>(null);
+const retrying = ref(false);
 
 const columns: DataTableColumns<RunSummary> = [
   {

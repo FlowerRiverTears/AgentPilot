@@ -4,7 +4,7 @@
 
     <div class="metrics">
       <n-card title="第二版总进度">
-        <div class="metric-value">86% 完成</div>
+        <div class="metric-value">78% 完成</div>
         <div class="muted">鉴权、工具日志、失败重试、文档管理已接入</div>
       </n-card>
       <n-card title="智能体管理">
