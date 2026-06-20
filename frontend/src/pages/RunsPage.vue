@@ -25,7 +25,8 @@
         <n-divider>回答</n-divider>
         <div class="answer-render">
           <template v-for="(part, index) in answerParts" :key="index">
-            <pre v-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
+            <MermaidBlock v-if="part.type === 'mermaid'" :source="part.content" />
+            <pre v-else-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
             <div v-else class="answer-text markdown-body" v-html="part.html || part.content" />
           </template>
         </div>
@@ -89,6 +90,7 @@ import { NButton, useMessage, type DataTableColumns } from "naive-ui";
 import type { RunDetail, RunSummary } from "../api/types";
 import { useWorkspaceStore } from "../stores/workspace";
 import { parseAnswerParts } from "../utils/answerFormat";
+import MermaidBlock from "../components/MermaidBlock.vue";
 
 const message = useMessage();
 const store = useWorkspaceStore();

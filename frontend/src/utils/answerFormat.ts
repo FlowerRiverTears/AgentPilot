@@ -2,7 +2,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 
 export interface AnswerPart {
-  type: "text" | "code";
+  type: "text" | "code" | "mermaid";
   content: string;
   language?: string;
   html?: string;
@@ -37,11 +37,13 @@ export function parseAnswerParts(text: string): AnswerPart[] {
     if (plain.trim()) {
       parts.push({ type: "text", content: plain, html: renderMarkdown(plain) });
     }
-    parts.push({
-      type: "code",
-      language: match[1] || "",
-      content: match[2].trim()
-    });
+    const language = match[1] || "";
+    const codeContent = match[2].trim();
+    if (language.toLowerCase() === "mermaid") {
+      parts.push({ type: "mermaid", content: codeContent, language: "mermaid" });
+    } else {
+      parts.push({ type: "code", language, content: codeContent });
+    }
     cursor = match.index + match[0].length;
   }
 

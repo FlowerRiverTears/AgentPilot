@@ -583,6 +583,16 @@ body {
   word-break: break-word;
 }
 
+.chat-error {
+  margin-top: 10px;
+}
+
+.chat-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .chat-citations {
   margin-top: 10px;
 }

@@ -34,7 +34,8 @@
           </div>
           <div class="answer-render">
             <template v-for="(part, index) in answerParts" :key="index">
-              <pre v-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
+              <MermaidBlock v-if="part.type === 'mermaid'" :source="part.content" />
+              <pre v-else-if="part.type === 'code'" class="answer-code"><code>{{ part.content }}</code></pre>
               <div v-else class="answer-text markdown-body" v-html="part.html || part.content" />
             </template>
           </div>
@@ -80,6 +81,7 @@ import { useMessage } from "naive-ui";
 
 import { useWorkspaceStore } from "../stores/workspace";
 import { cleanAnswerText, parseAnswerParts } from "../utils/answerFormat";
+import MermaidBlock from "../components/MermaidBlock.vue";
 
 const message = useMessage();
 const store = useWorkspaceStore();

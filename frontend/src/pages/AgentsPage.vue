@@ -15,6 +15,15 @@
             placeholder="选择已配置的大模型"
           />
         </n-form-item>
+        <n-form-item label="Prompt 模板">
+          <n-select
+            :value="promptTemplate"
+            :options="promptTemplateOptions"
+            placeholder="选择 Prompt 模板（可选）"
+            clearable
+            @update:value="applyPromptTemplate"
+          />
+        </n-form-item>
         <n-form-item label="系统提示词">
           <n-input
             v-model:value="form.system_prompt"
@@ -48,6 +57,16 @@
     </n-card>
 
     <n-card title="智能体列表">
+      <template #header-extra>
+        <n-button type="primary" @click="triggerImport">导入智能体</n-button>
+        <input
+          ref="fileInputRef"
+          type="file"
+          accept=".json"
+          style="display: none"
+          @change="handleImport"
+        />
+      </template>
       <n-data-table :columns="columns" :data="store.agents" :bordered="false" />
     </n-card>
   </div>
@@ -57,12 +76,26 @@
 import { computed, h, onMounted, reactive, ref } from "vue";
 import { NButton, NPopconfirm, NSpace, NTag, useMessage, type DataTableColumns } from "naive-ui";
 
+import { api } from "../api/client";
 import type { Agent } from "../api/types";
 import { useWorkspaceStore } from "../stores/workspace";
 
 const message = useMessage();
 const store = useWorkspaceStore();
 const editingAgentId = ref<string | null>(null);
+
+// Prompt 模板预置列表
+const promptTemplateOptions = [
+  { label: "通用助手", value: "你是一个乐于助人的AI助手，请清晰、准确地回答用户问题。" },
+  { label: "客服助手", value: "你是一个专业的客服助手。请耐心、礼貌地回答用户问题，遇到无法解决的问题请引导用户联系人工客服。" },
+  { label: "代码助手", value: "你是一个专业的编程助手。请提供准确、高效的代码建议，并附上简要说明。代码需遵循最佳实践。" },
+  { label: "翻译助手", value: "你是一个专业翻译助手。请将用户输入翻译为目标语言，保持原文语义和语气。如未指定目标语言，默认翻译为英文。" },
+  { label: "文档总结", value: "你是一个文档总结助手。请根据提供的文档内容生成简洁的摘要，突出关键信息和要点。" },
+  { label: "数据分析", value: "你是一个数据分析助手。请根据提供的数据进行分析，给出清晰的结论和建议，必要时使用表格展示。" }
+];
+
+const promptTemplate = ref<string | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 const form = reactive({
   name: "",
@@ -124,7 +157,7 @@ const columns: DataTableColumns<Agent> = [
   {
     title: "操作",
     key: "actions",
-    width: 280,
+    width: 340,
     render(row) {
       const buttons = [
         h(NButton, { size: "small", secondary: true, onClick: () => startEdit(row) }, { default: () => "编辑" })
@@ -141,6 +174,9 @@ const columns: DataTableColumns<Agent> = [
       }
       buttons.push(
         h(NButton, { size: "small", secondary: true, onClick: () => handleDuplicate(row.id) }, { default: () => "复制" })
+      );
+      buttons.push(
+        h(NButton, { size: "small", secondary: true, onClick: () => handleExport(row.id) }, { default: () => "导出" })
       );
       buttons.push(
         h(NPopconfirm, { onPositiveClick: () => handleDelete(row.id) }, {
@@ -167,6 +203,8 @@ function startEdit(agent: Agent) {
   form.system_prompt = agent.system_prompt;
   form.knowledge_base_ids = [...agent.knowledge_base_ids];
   form.tool_ids = [...agent.tool_ids];
+  // 编辑时清空模板选择，避免覆盖已有提示词
+  promptTemplate.value = null;
 }
 
 function resetForm() {
@@ -177,6 +215,15 @@ function resetForm() {
   form.system_prompt = "你是一个企业 AI 智能体。回答必须清晰、准确，并在使用知识库时说明来源。";
   form.knowledge_base_ids = [];
   form.tool_ids = [];
+  promptTemplate.value = null;
+}
+
+// 选择 Prompt 模板后自动填充系统提示词
+function applyPromptTemplate(value: string | null) {
+  promptTemplate.value = value;
+  if (value) {
+    form.system_prompt = value;
+  }
 }
 
 async function submit() {
@@ -256,6 +303,52 @@ async function handleDelete(agentId: string) {
     }
   } catch (e: any) {
     message.error(e?.message || "删除失败");
+  }
+}
+
+// 导出智能体配置为 JSON 文件下载
+async function handleExport(agentId: string) {
+  try {
+    const response = await api.get(`/agents/${agentId}/export`);
+    const blob = new Blob([JSON.stringify(response.data, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${response.data.name || "agent"}-export.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    message.success("智能体已导出");
+  } catch (e: any) {
+    message.error(e?.message || "导出失败");
+  }
+}
+
+// 触发文件选择器
+function triggerImport() {
+  fileInputRef.value?.click();
+}
+
+// 导入智能体配置
+async function handleImport(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const config = JSON.parse(text);
+    await api.post("/agents/import", config);
+    message.success("智能体导入成功");
+    await store.loadAgents();
+  } catch (e: any) {
+    message.error(e?.message || "导入失败，请检查文件格式");
+  } finally {
+    // 重置 input，允许再次选择同一文件
+    target.value = "";
   }
 }
 
