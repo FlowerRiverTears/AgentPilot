@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
-from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool, User
+from app.models import Agent, AgentRun, Conversation, Document, DocumentChunk, Feedback, KnowledgeBase, RunStep, Tool, ToolCall, User
 from app.rag.pipeline import rag_pipeline
 from app.rag.document_loader import ExtractedImage, ParsedDocument
 from app.rag.relevance import lexical_relevance
@@ -482,19 +482,20 @@ class DatabaseStore:
             if not agent_row:
                 return []
 
+            # 遍历所有绑定的知识库，分别执行检索
             kb_ids = agent_row.config.get("knowledge_base_ids", [])
             for kb_id in kb_ids:
                 kb_chunks = await self.retrieve_chunks(kb_id, query, top_k=top_k)
                 all_chunks.extend(kb_chunks)
 
+        # 合并后按 score 排序，按 chunk_id 去重，取 top_k
         all_chunks.sort(key=lambda item: item.score, reverse=True)
         deduped: list[RetrievedChunk] = []
-        seen_contents: set[str] = set()
+        seen_chunk_ids: set[str] = set()
         for chunk in all_chunks:
-            normalized_content = " ".join(chunk.content.split())
-            if normalized_content in seen_contents:
+            if chunk.chunk_id in seen_chunk_ids:
                 continue
-            seen_contents.add(normalized_content)
+            seen_chunk_ids.add(chunk.chunk_id)
             deduped.append(chunk)
         return deduped[:top_k]
 
@@ -569,6 +570,40 @@ class DatabaseStore:
             )
             rows = await session.execute(stmt)
             return [self._run_to_summary(run, agent_name) for run, agent_name in rows.all()]
+
+    async def get_stats(self) -> dict:
+        """总览统计数据：各资源数量与鉴权状态。"""
+        async with AsyncSessionLocal() as session:
+            agents_total = await session.scalar(
+                select(func.count()).select_from(Agent).where(Agent.status != "deleted")
+            )
+            agents_published = await session.scalar(
+                select(func.count()).select_from(Agent).where(Agent.status == "published")
+            )
+            runs_total = await session.scalar(select(func.count()).select_from(AgentRun))
+            knowledge_bases = await session.scalar(select(func.count()).select_from(KnowledgeBase))
+            documents = await session.scalar(select(func.count()).select_from(Document))
+            tools = await session.scalar(select(func.count()).select_from(Tool))
+            tool_calls = await session.scalar(select(func.count()).select_from(ToolCall))
+            conversations = await session.scalar(select(func.count()).select_from(Conversation))
+            feedback_likes = await session.scalar(
+                select(func.count()).select_from(Feedback).where(Feedback.rating == "like")
+            )
+            feedback_dislikes = await session.scalar(
+                select(func.count()).select_from(Feedback).where(Feedback.rating == "dislike")
+            )
+            return {
+                "agents_total": int(agents_total or 0),
+                "agents_published": int(agents_published or 0),
+                "runs_total": int(runs_total or 0),
+                "knowledge_bases": int(knowledge_bases or 0),
+                "documents": int(documents or 0),
+                "tools": int(tools or 0),
+                "tool_calls": int(tool_calls or 0),
+                "conversations": int(conversations or 0),
+                "feedback_likes": int(feedback_likes or 0),
+                "feedback_dislikes": int(feedback_dislikes or 0),
+            }
 
     async def get_run(self, run_id: str) -> AgentRunDetail | None:
         run_uuid = self._maybe_uuid(run_id)

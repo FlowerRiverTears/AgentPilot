@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "AgentPilot"
-    app_version: str = "0.2.0"
+    app_version: str = "3.0.0"
     api_prefix: str = "/api"
     environment: str = "local"
 
@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     auth_enabled: bool = True  # 是否启用鉴权，方便开发时关闭
     admin_username: str = "admin"
     admin_password: str = "admin123"  # 初始管理员密码
+
+    # 上下文压缩配置
+    context_token_threshold: int = 6000  # Token 估算超过此值时触发压缩
+    recent_turns: int = 6  # 压缩时保留最近几轮对话原文
+
+    # OCR 配置
+    ocr_enabled: bool = True  # 是否启用扫描件 PDF 的 OCR
+    ocr_language: str = "chi_sim+eng"  # Tesseract 语言代码
+    ocr_dpi: int = 200  # PDF 转图片的 DPI
 
 
 settings = Settings()

@@ -9,6 +9,10 @@ from app.schemas.agents import AgentRead
 from app.schemas.knowledge import RetrievedChunk
 from app.tools import tool_registry
 
+# 上下文压缩相关常量（后续可移到 config.py）
+CONTEXT_TOKEN_THRESHOLD = 6000  # 触发压缩的 Token 阈值（约 10K 上下文窗口的 60%）
+RECENT_TURNS = 6  # 压缩时保留的最近轮数（一轮 = user + assistant，对应 12 条消息）
+
 
 class AgentRuntime:
     def _format_context(self, retrieved: list[RetrievedChunk]) -> str:
@@ -34,14 +38,28 @@ class AgentRuntime:
                 parts.append(f"{header}\n{chunk.content}")
         return "\n\n".join(parts)
 
-    def _build_messages(
+    def _estimate_messages_tokens(self, messages: list[dict]) -> int:
+        """粗估消息列表的 Token 数。中文约 1 字 ≈ 1.5 Token，英文约 4 字符 ≈ 1 Token。"""
+        total = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            chinese_chars = sum(1 for c in content if "\u4e00" <= c <= "\u9fff")
+            other_chars = len(content) - chinese_chars
+            total += int(chinese_chars * 1.5 + other_chars / 4)
+        return total
+
+    async def _build_messages(
         self,
         agent: AgentRead,
         user_input: str,
         context: str,
         tool_context: str,
         messages: list[dict[str, str]] | None = None,
-    ) -> list[dict[str, str]]:
+    ) -> tuple[list[dict[str, str]], bool]:
+        """构建发送给 LLM 的消息列表，并在 Token 超阈值时进行上下文压缩。
+
+        返回 (chat_messages, compressed)，compressed 表示是否触发了压缩。
+        """
         system_prompt = (
             f"{agent.system_prompt}\n\n"
             "RAG 回答要求：优先依据工具结果和知识库上下文回答；"
@@ -49,12 +67,44 @@ class AgentRuntime:
             "上下文不足时明确说明无法从当前资料确认，不要编造。"
         )
         chat_messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
+
+        # 过滤出有效的历史消息
+        history: list[dict[str, str]] = []
         if messages:
-            chat_messages.extend(
+            history = [
                 {"role": message["role"], "content": message["content"]}
                 for message in messages
                 if message.get("role") in {"user", "assistant"} and message.get("content")
-            )
+            ]
+
+        compressed = False
+        # 上下文压缩：当历史消息 Token 估算超过阈值时，保留最近 RECENT_TURNS 轮原文，
+        # 对早期消息生成摘要并替换。
+        if history and self._estimate_messages_tokens(history) > CONTEXT_TOKEN_THRESHOLD:
+            keep_count = RECENT_TURNS * 2  # 每轮 2 条消息
+            if len(history) > keep_count:
+                early_messages = history[:-keep_count]
+                recent_messages = history[-keep_count:]
+                summary = await llm_gateway.summarize_messages(early_messages)
+                if summary:
+                    # 用摘要替换早期消息，作为 system 角色注入
+                    chat_messages.append(
+                        {
+                            "role": "system",
+                            "content": f"以下是之前对话的摘要，供你参考：\n{summary}",
+                        }
+                    )
+                    chat_messages.extend(recent_messages)
+                    compressed = True
+                else:
+                    # 摘要失败，回退到只保留最近消息
+                    chat_messages.extend(recent_messages)
+                    compressed = True
+            else:
+                chat_messages.extend(history)
+        else:
+            chat_messages.extend(history)
+
         chat_messages.append(
             {
                 "role": "user",
@@ -66,7 +116,7 @@ class AgentRuntime:
                 ),
             }
         )
-        return chat_messages
+        return chat_messages, compressed
 
     async def _resolve_model_name(self, agent: AgentRead) -> str:
         if agent.model:
@@ -104,7 +154,7 @@ class AgentRuntime:
                 for result in fallback_tool_results
             )
         model_name = await self._resolve_model_name(agent)
-        chat_messages = self._build_messages(agent, user_input, context, tool_context, messages)
+        chat_messages, _compressed = await self._build_messages(agent, user_input, context, tool_context, messages)
         generation_status = "完成"
         error_message = ""
         try:
@@ -201,7 +251,7 @@ class AgentRuntime:
         citations_data = [chunk.model_dump() for chunk in retrieved]
         yield f"event: citations\ndata: {json.dumps(citations_data, ensure_ascii=False)}\n\n"
 
-        chat_messages = self._build_messages(agent, user_input, context, tool_context, messages)
+        chat_messages, compressed = await self._build_messages(agent, user_input, context, tool_context, messages)
 
         full_answer = ""
         generation_status = "完成"
@@ -217,8 +267,7 @@ class AgentRuntime:
         except Exception as exc:
             generation_status = "失败"
             error_message = str(exc)
-            full_answer = "流式生成失败，请检查模型配置。"
-            yield f"data: {json.dumps({'token': full_answer}, ensure_ascii=False)}\n\n"
+            yield f"event: error\ndata: {json.dumps({'message': error_message, 'type': 'generation_failed'}, ensure_ascii=False)}\n\n"
 
         steps.append(
             {"name": "大模型生成", "status": generation_status, "detail": f"使用模型：{model_name}"}
@@ -242,9 +291,16 @@ class AgentRuntime:
             error=error_message or None,
         )
 
+        done_payload = {
+            "run_id": run_data["run_id"],
+            "model": model_name,
+            "duration_ms": run_data["duration_ms"],
+        }
+        if compressed:
+            done_payload["compressed"] = True
         yield (
             "event: done\n"
-            f"data: {json.dumps({'run_id': run_data['run_id'], 'model': model_name, 'duration_ms': run_data['duration_ms']}, ensure_ascii=False)}\n\n"
+            f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
         )
 
 

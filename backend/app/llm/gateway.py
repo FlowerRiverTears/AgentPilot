@@ -233,6 +233,46 @@ class LLMGateway:
             for i in range(0, len(fallback), chunk_size):
                 yield fallback[i : i + chunk_size]
 
+    async def summarize_messages(self, messages: list[dict[str, str]]) -> str:
+        """对一段对话历史生成摘要。失败时返回空字符串。"""
+        if not messages:
+            return ""
+        # 组装对话文本
+        dialog_lines = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "user":
+                dialog_lines.append(f"用户：{content}")
+            elif role == "assistant":
+                dialog_lines.append(f"助手：{content}")
+        dialog_text = "\n".join(dialog_lines)
+
+        summarize_messages_payload = [
+            {
+                "role": "system",
+                "content": (
+                    "你是一个对话摘要助手。请将以下对话历史压缩为一段简洁的摘要，"
+                    "保留关键事实、决策和上下文信息，便于后续对话引用。"
+                    "摘要应使用第三人称描述，不要包含问候语或无关内容。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"以下是需要压缩的对话历史：\n\n{dialog_text}\n\n请生成摘要：",
+            },
+        ]
+        try:
+            summary = await self.chat(
+                summarize_messages_payload,
+                model=None,
+                config_id=None,
+                fallback=True,
+            )
+            return summary.strip()
+        except Exception:
+            return ""
+
     def _fallback_answer(self, messages: list[dict[str, str]]) -> str:
         user_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         question = self._extract_section(user_text, "用户问题：", "\n\n知识库上下文：") or user_text

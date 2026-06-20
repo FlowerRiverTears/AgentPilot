@@ -9,7 +9,7 @@ from app.core.aspects import AspectMiddleware
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
-from app.models import Agent, AgentRun, Document, DocumentChunk, KnowledgeBase, RunStep, Tool, ToolCall, User
+from app.models import Agent, AgentRun, Conversation, Document, DocumentChunk, Feedback, KnowledgeBase, RunStep, Tool, ToolCall, User
 from app.repositories.memory import store
 
 
