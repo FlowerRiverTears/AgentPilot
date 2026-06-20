@@ -4,7 +4,7 @@
 
 **AI Agent Workbench · AI 智能体工作台**
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com)
 [![Python](https://img.shields.io/badge/Python-3.11-green.svg)](https://python.org)
 [![Vue](https://img.shields.io/badge/Vue-3-brightgreen.svg)](https://vuejs.org)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docker.com)
@@ -119,8 +119,8 @@ MinIO default credentials (please change after first launch): see `deploy/docker
 
 ### Roadmap
 
-Completed (v0.2.0):
-- [x] OCR support for scanned PDFs
+Completed (v2.0):
+   - [x] OCR support for scanned PDFs
 - [x] Context compression (sliding window + summary)
 - [x] Multi-knowledge-base binding per agent
 - [x] Agent import/export (JSON)
@@ -277,8 +277,8 @@ MinIO 默认账号（首次启动后请立即修改）：参见 `deploy/docker-c
 
 ### 路线图
 
-已完成（v0.2.0）：
-- [x] OCR 支持扫描件 PDF
+已完成（v2.0）：
+   - [x] OCR 支持扫描件 PDF
 - [x] 上下文压缩（滑动窗口 + 摘要）
 - [x] 一个智能体绑定多个知识库
 - [x] 智能体导入/导出（JSON）

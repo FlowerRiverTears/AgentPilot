@@ -39,7 +39,7 @@ http://localhost:8000/api
 {
   "status": "ok",
   "app": "AgentPilot",
-  "version": "0.2.0",
+  "version": "3.0.0",
   "trace_id": "..."
 }
 ```

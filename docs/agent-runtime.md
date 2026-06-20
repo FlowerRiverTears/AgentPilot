@@ -97,7 +97,7 @@ POST /api/runs
 - 流式运行失败时正确记录 status=failed 和 error 信息。
 - 工具调用日志：每次工具调用记录到 tool_calls 表，含耗时、状态码、输入输出。
 
-## 已实现的增强（v0.2.0 新增）
+## 已实现的增强（v2.0 新增）
 
 - 对话记忆管理：查看历史会话列表、删除会话、会话搜索。接口：`GET/POST/DELETE /conversations`。
 - 上下文压缩（滑动窗口+摘要）：长对话自动压缩早期上下文，Token 使用率达到上下文窗口 60% 时触发，保留最近 6 轮原文，早期对话由 LLM 生成摘要替换。摘要缓存在 `conversations` 表的 `summary` 和 `summary_to_turn` 字段中。

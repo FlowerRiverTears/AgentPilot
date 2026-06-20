@@ -279,7 +279,7 @@ pyAgent/
 - eval_cases ❌
 - eval_runs ❌
 - audit_logs ❌
-- feedbacks ✅（v0.2.0 新增）
+- feedbacks ✅（v2.0 新增）
 - tools ✅
 
 ## 8. API 设计示例
