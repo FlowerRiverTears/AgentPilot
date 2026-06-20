@@ -1,3 +1,5 @@
+> 最后更新：2026-06-20 | 本文档定位：项目愿景与远期规划，与 PROJECT_SPEC.md（当前实现状态）互补
+
 # AgentPilot 项目内容方案
 
 ## 1. 项目定位
@@ -254,29 +256,31 @@ pyAgent/
 
 ## 7. 数据模型草案
 
-核心表：
+核心表（✅ 已实现 / ❌ 未实现 / ⚠️ 部分实现）：
 
-- users：用户。
-- organizations：组织。
-- projects：项目空间。
-- model_providers：模型供应商配置。
-- agents：Agent 基础配置。
-- agent_versions：Agent 版本。
-- workflows：工作流定义。
-- workflow_nodes：节点配置。
-- workflow_edges：节点连接。
-- conversations：会话。
-- messages：消息。
-- runs：一次 Agent 执行。
-- run_steps：执行步骤。
-- tool_calls：工具调用记录。
-- knowledge_bases：知识库。
-- documents：文档。
-- document_chunks：文档切片，包含 embedding（支持文本和图片多模态向量）。
-- eval_datasets：评测集。
-- eval_cases：评测用例。
-- eval_runs：评测任务。
-- audit_logs：审计日志。
+- users ✅
+- organizations ❌
+- projects ❌
+- model_configs ✅
+- agents ✅
+- agent_versions ❌
+- workflows ❌
+- workflow_nodes ❌
+- workflow_edges ❌
+- conversations ✅（摘要内嵌在 conversations 表中）
+- messages ❌（消息内嵌在 conversations.messages JSON 字段中）
+- runs ✅（表名 agent_runs）
+- run_steps ✅
+- tool_calls ✅
+- knowledge_bases ✅
+- documents ✅
+- document_chunks ✅（含多模态向量）
+- eval_datasets ❌
+- eval_cases ❌
+- eval_runs ❌
+- audit_logs ❌
+- feedbacks ✅（v0.2.0 新增）
+- tools ✅
 
 ## 8. API 设计示例
 
@@ -325,6 +329,8 @@ README 首页需要突出这些点：
 - 有 Roadmap 和 Good First Issue。
 
 ## 10. 面试加分点
+
+> 注：本节内容适合面试准备参考，不属于项目规格。
 
 这个项目能在面试中讲清楚以下能力：
 
@@ -397,7 +403,7 @@ README 首页需要突出这些点：
 - 配置对比实验
 - 模板沉淀与版本演化
 
-## 12. 第一版建议项目名
+## 12. 项目名决策（已确定：AgentPilot）
 
 可选名称：
 

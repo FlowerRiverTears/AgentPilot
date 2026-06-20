@@ -152,3 +152,56 @@ frontend/src/stores/ui.ts
 ```
 
 主题会写入 `localStorage`，并同步到 `body[data-theme]`，用于控制自定义 CSS 变量。
+
+## 环境要求
+
+| 工具 | 最低版本 |
+|------|----------|
+| Python | 3.11+ |
+| Node.js | 18+ |
+| Docker | 24+ |
+| Docker Compose | v2+ |
+
+## 数据库迁移
+
+当前使用 `deploy/init.sql` + 应用启动时自动补齐字段的方式管理数据库 Schema。
+
+已知问题：
+- 迁移不可回滚
+- 无版本记录
+- 多人协作时容易冲突
+
+规划：引入 Alembic 管理数据库迁移，每次 Schema 变更生成迁移脚本，支持 upgrade/downgrade。
+
+## 代码规范
+
+- 后端：遵循 PEP 8，使用 ruff 格式化和检查。
+- 前端：使用 ESLint + Prettier，配置在 `frontend/.eslintrc` 和 `frontend/.prettierrc`。
+- Git 提交信息：建议使用 Conventional Commits 格式（`feat:`, `fix:`, `docs:`, `chore:` 等）。
+
+## 测试
+
+- 后端测试：`pytest`，测试文件位于 `backend/tests/`。
+- 前端测试：暂未配置，规划使用 Vitest。
+- 运行后端测试：`cd backend && pytest`
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `DATABASE_URL` | `postgresql+asyncpg://agentpilot:agentpilot@localhost:15432/agentpilot` | 数据库连接 |
+| `REDIS_URL` | `redis://localhost:16379/0` | Redis 连接 |
+| `MINIO_ENDPOINT` | `localhost:19000` | MinIO 端点 |
+| `MINIO_ACCESS_KEY` | `agentpilot` | MinIO 访问密钥 |
+| `MINIO_SECRET_KEY` | `agentpilot123` | MinIO 密钥 |
+| `JWT_SECRET_KEY` | `agentpilot-dev-secret-change-in-production` | JWT 签名密钥（⚠️ 生产环境必须修改） |
+| `JWT_EXPIRE_MINUTES` | `1440` | Token 有效期（分钟） |
+| `AUTH_ENABLED` | `true` | 是否启用鉴权 |
+| `ADMIN_USERNAME` | `admin` | 默认管理员用户名 |
+| `ADMIN_PASSWORD` | `admin123` | 默认管理员密码（⚠️ 首次登录后请修改） |
+
+## 日志
+
+- 后端日志输出到 stdout，Docker 环境下通过 `docker logs` 查看。
+- 日志级别：DEBUG / INFO / WARNING / ERROR。
+- 建议生产环境使用 JSON 结构化日志，便于日志聚合和分析。

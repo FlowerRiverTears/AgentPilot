@@ -62,14 +62,33 @@ POST   /api/tools/{id}/test 工具测试
 - 运行时按关键词触发工具调用
 - 内置工具作为 fallback，数据库工具优先
 
+## 工具调用日志
+
+每次工具调用自动记录到 `tool_calls` 表：
+
+| 字段 | 说明 |
+|------|------|
+| `run_id` | 关联的运行 ID |
+| `tool_id` | 关联的工具 ID |
+| `tool_name` | 工具名称 |
+| `input` | 调用输入 |
+| `output` | 调用输出 |
+| `status` | 调用状态（success / failed） |
+| `status_code` | HTTP 状态码 |
+| `elapsed_ms` | 耗时（毫秒） |
+| `error` | 错误信息 |
+| `detail` | 详细信息（JSON） |
+
+查询接口：`GET /tools/calls?limit=50`（需鉴权）
+
 ## 当前限制
 
 - 工具管理页面已具备基础创建、编辑、删除和测试能力，后续需要优化交互体验。
-- 还没有工具调用日志表。
 - 还没有 SQL 工具。
 - 还没有鉴权配置页。
+- 工具配置中的 Headers 可能包含敏感信息（如 Bearer Token），当前明文存储，建议加密。
 
-## 第二版工具能力
+## 工具能力规划
 
 ### HTTP 工具
 
@@ -107,7 +126,7 @@ POST   /api/tools/{id}/test 工具测试
 - 查看耗时。
 - 查看错误原因。
 
-## 第二版调用流程
+## 调用流程
 
 1. Agent 绑定工具。
 2. 用户提问。
