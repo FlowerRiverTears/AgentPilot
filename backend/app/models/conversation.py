@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -8,10 +8,11 @@ from app.db.base import Base, TimestampMixin
 
 class Conversation(Base, TimestampMixin):
     __tablename__ = "conversations"
+    __table_args__ = (Index("ix_conversations_agent_session", "agent_id", "session_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id"), nullable=False
+        ForeignKey("agents.id"), nullable=False, index=True
     )
     session_id: Mapped[str] = mapped_column(String(80), nullable=False)  # 前端生成的会话ID
     title: Mapped[str] = mapped_column(String(200), default="", nullable=False)

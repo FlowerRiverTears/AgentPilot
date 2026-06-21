@@ -120,18 +120,23 @@ MinIO default credentials (please change after first launch): see `deploy/docker
 ### Roadmap
 
 Completed (v2.0):
-   - [x] OCR support for scanned PDFs
+- [x] OCR support for scanned PDFs
 - [x] Context compression (sliding window + summary)
 - [x] Multi-knowledge-base binding per agent
 - [x] Agent import/export (JSON)
 - [x] Answer feedback (thumbs up/down)
 - [x] Mermaid.js chart rendering in agent answers
 
-Planned (v3.0):
-- [ ] Multi-agent collaboration
+Completed (v3.0):
+- [x] Evaluation system
+- [x] Multi-agent collaboration
+- [x] RBAC with API Key management
+
+Planned (v4.0):
 - [ ] Visual workflow editor
-- [ ] Evaluation system
-- [ ] RBAC with API Key management
+- [ ] Multi-tenant isolation
+- [ ] Plugin marketplace
+- [ ] WebSocket support
 
 ### Documentation
 
@@ -278,18 +283,23 @@ MinIO 默认账号（首次启动后请立即修改）：参见 `deploy/docker-c
 ### 路线图
 
 已完成（v2.0）：
-   - [x] OCR 支持扫描件 PDF
+- [x] OCR 支持扫描件 PDF
 - [x] 上下文压缩（滑动窗口 + 摘要）
 - [x] 一个智能体绑定多个知识库
 - [x] 智能体导入/导出（JSON）
 - [x] 回答反馈（点赞/点踩）
 - [x] Mermaid.js 图表渲染
 
-计划中（v3.0）：
-- [ ] 多智能体协作
+已完成（v3.0）：
+- [x] 评测系统
+- [x] 多智能体协作
+- [x] RBAC 与 API Key 管理
+
+计划中（v4.0）：
 - [ ] 可视化工作流编辑器
-- [ ] 评测系统
-- [ ] RBAC 与 API Key 管理
+- [ ] 多租户隔离
+- [ ] 插件市场
+- [ ] WebSocket 支持
 
 ### 文档索引
 

@@ -352,15 +352,15 @@
 
 ---
 
-### 10.3 API Key 明文存储
+### 10.3 API Key 加密存储
 
 **问题**：`model_configs.api_key` 在数据库中明文存储，数据库泄露将导致 API Key 泄露。
 
 **原因**：初期简化实现。
 
-**解决**：使用 AES-256 加密存储（规划中）。
+**解决**：已使用 Fernet/AES-256 加密存储，密钥通过 `ENCRYPTION_KEY` 环境变量管理。`crypto.py` 提供 `encrypt_api_key()` / `decrypt_api_key()` 工具函数。
 
-**预防措施**：数据库访问权限最小化，定期审计。
+**预防措施**：生产环境必须设置 `ENCRYPTION_KEY`，否则加密功能不可用。
 
 ---
 
@@ -370,7 +370,7 @@
 
 **原因**：工具配置灵活性需要。
 
-**解决**：敏感 Header 脱敏显示，加密存储（规划中）。
+**解决**：敏感 Header 脱敏显示，加密存储（规划中）。当前 `model_configs.api_key` 已加密，工具 Headers 加密是后续工作。
 
 **预防措施**：前端展示时对 Authorization 等 Header 做脱敏处理。
 

@@ -11,10 +11,10 @@ class Feedback(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("agent_runs.id"), nullable=True
+        ForeignKey("agent_runs.id"), nullable=True, index=True
     )
     agent_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("agents.id"), nullable=True
+        ForeignKey("agents.id"), nullable=True, index=True
     )
     rating: Mapped[str] = mapped_column(String(20), nullable=False)  # "like" or "dislike"
     comment: Mapped[str] = mapped_column(Text, default="", nullable=False)

@@ -1,32 +1,57 @@
+"""Cross-cutting concerns middleware: logging, tracing, timing."""
+import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable
 
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
+
+logger = logging.getLogger("agentpilot.request")
 
 
 class AspectMiddleware(BaseHTTPMiddleware):
-    """Cross-cutting middleware for trace, audit, timing and future rate limits."""
+    """Middleware for cross-cutting concerns: request logging, tracing, timing.
 
-    async def dispatch(
-        self,
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        trace_id = request.headers.get("x-trace-id", str(uuid.uuid4()))
-        start = time.perf_counter()
+    Future: rate limiting, request ID propagation.
+    """
 
-        request.state.trace_id = trace_id
-        request.state.audit = {
-            "method": request.method,
-            "path": request.url.path,
-            "client": request.client.host if request.client else "unknown",
-        }
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        # Skip health checks from verbose logging
+        is_health = request.url.path in ("/health", "/health/stats")
 
+        # Generate trace ID
+        trace_id = request.headers.get("X-Trace-Id", uuid.uuid4().hex[:12])
+
+        start_time = time.time()
+
+        # Process request
         response = await call_next(request)
-        elapsed_ms = int((time.perf_counter() - start) * 1000)
 
-        response.headers["x-trace-id"] = trace_id
-        response.headers["x-elapsed-ms"] = str(elapsed_ms)
+        duration_ms = (time.time() - start_time) * 1000
+
+        # Add trace ID to response
+        response.headers["X-Trace-Id"] = trace_id
+
+        # Log request (skip health checks unless slow)
+        if not is_health or duration_ms > 1000:
+            logger.info(
+                "%s %s → %d (%.0fms) trace=%s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                duration_ms,
+                trace_id,
+            )
+
+        # Log slow requests as warnings
+        if duration_ms > 5000:
+            logger.warning(
+                "Slow request: %s %s (%.0fms) trace=%s",
+                request.method,
+                request.url.path,
+                duration_ms,
+                trace_id,
+            )
+
         return response

@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger(__name__)
+from app.core.config import settings
 
-# 扫描件判定阈值：每页平均文字少于该值则视为扫描件
-SCANNED_PDF_AVG_CHARS_THRESHOLD = 50
+logger = logging.getLogger(__name__)
 
 
 def is_scanned_pdf(text: str, page_count: int) -> bool:
@@ -22,7 +21,7 @@ def is_scanned_pdf(text: str, page_count: int) -> bool:
     if page_count <= 0:
         return False
     avg_chars = len(text.strip()) / page_count
-    return avg_chars < SCANNED_PDF_AVG_CHARS_THRESHOLD
+    return avg_chars < settings.ocr_scanned_threshold
 
 
 def get_ocr_language() -> str:

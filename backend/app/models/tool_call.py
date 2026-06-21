@@ -12,8 +12,8 @@ class ToolCall(Base, TimestampMixin):
     __tablename__ = "tool_calls"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
-    tool_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tools.id"), nullable=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=True, index=True)
+    tool_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tools.id", ondelete="SET NULL"), nullable=True, index=True)
     tool_name: Mapped[str] = mapped_column(String(120), nullable=False)
     input: Mapped[str] = mapped_column(Text, default="", nullable=False)
     output: Mapped[str] = mapped_column(Text, default="", nullable=False)

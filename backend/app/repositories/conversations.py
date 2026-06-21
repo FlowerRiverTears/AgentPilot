@@ -1,32 +1,23 @@
 from __future__ import annotations
 
-from uuid import UUID
-
 from sqlalchemy import or_, select
 
 from app.db.session import AsyncSessionLocal
 from app.models.conversation import Conversation
-
-
-def _maybe_uuid(value: str | None) -> UUID | None:
-    if not value:
-        return None
-    try:
-        return UUID(value)
-    except ValueError:
-        return None
+from app.repositories.base import maybe_uuid
 
 
 class ConversationStore:
     """对话记忆管理仓库。"""
 
-    async def list_conversations(self, agent_id: str | None = None) -> list[dict]:
+    async def list_conversations(self, agent_id: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
         """查询会话列表，按 updated_at desc 排序。"""
         async with AsyncSessionLocal() as session:
             stmt = select(Conversation).order_by(Conversation.updated_at.desc())
-            agent_uuid = _maybe_uuid(agent_id)
+            agent_uuid = maybe_uuid(agent_id)
             if agent_uuid:
                 stmt = stmt.where(Conversation.agent_id == agent_uuid)
+            stmt = stmt.offset(offset).limit(limit)
             rows = (await session.execute(stmt)).scalars().all()
             return [
                 {
@@ -43,7 +34,7 @@ class ConversationStore:
 
     async def get_conversation(self, conversation_id: str) -> dict | None:
         """获取单个会话详情（含 messages）。"""
-        conv_uuid = _maybe_uuid(conversation_id)
+        conv_uuid = maybe_uuid(conversation_id)
         if not conv_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -72,7 +63,7 @@ class ConversationStore:
         summary_to_turn: int = 0,
     ) -> dict:
         """按 session_id upsert 会话。"""
-        agent_uuid = _maybe_uuid(agent_id)
+        agent_uuid = maybe_uuid(agent_id)
         if not agent_uuid:
             raise ValueError("无效的 agent_id")
 
@@ -121,7 +112,7 @@ class ConversationStore:
 
     async def delete_conversation(self, conversation_id: str) -> bool:
         """删除会话。"""
-        conv_uuid = _maybe_uuid(conversation_id)
+        conv_uuid = maybe_uuid(conversation_id)
         if not conv_uuid:
             return False
         async with AsyncSessionLocal() as session:

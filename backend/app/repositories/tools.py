@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from time import perf_counter
-from uuid import UUID
 
 import httpx
 from sqlalchemy import select
 
+from app.core.ssrf import is_url_safe
 from app.db.session import AsyncSessionLocal
 from app.models import Tool, ToolCall
+from app.repositories.base import maybe_uuid
 from app.schemas.tools import ToolCreate, ToolRead, ToolTestRequest, ToolTestResult, ToolUpdate
 
 
@@ -18,7 +19,7 @@ class ToolStore:
             return [self._to_read(tool) for tool in result.scalars().all()]
 
     async def get_tool(self, tool_id: str) -> ToolRead | None:
-        tool_uuid = self._maybe_uuid(tool_id)
+        tool_uuid = maybe_uuid(tool_id)
         if not tool_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -42,7 +43,7 @@ class ToolStore:
             return self._to_read(tool)
 
     async def update_tool(self, tool_id: str, payload: ToolUpdate) -> ToolRead | None:
-        tool_uuid = self._maybe_uuid(tool_id)
+        tool_uuid = maybe_uuid(tool_id)
         if not tool_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -64,7 +65,7 @@ class ToolStore:
             return self._to_read(tool)
 
     async def delete_tool(self, tool_id: str) -> bool:
-        tool_uuid = self._maybe_uuid(tool_id)
+        tool_uuid = maybe_uuid(tool_id)
         if not tool_uuid:
             return False
         async with AsyncSessionLocal() as session:
@@ -83,6 +84,9 @@ class ToolStore:
             return ToolTestResult(ok=False, error="Unsupported tool type")
 
         config = tool.config
+        is_safe, reason = is_url_safe(config["url"])
+        if not is_safe:
+            return ToolTestResult(ok=False, error=f"URL blocked: {reason}")
         start = perf_counter()
         try:
             async with httpx.AsyncClient(timeout=config.get("timeout_seconds", 20)) as client:
@@ -112,14 +116,16 @@ class ToolStore:
     async def run_for_input(
         self, enabled_tool_ids: list[str], user_input: str, run_id: str | None = None
     ) -> list[dict[str, str]]:
-        enabled = {self._maybe_uuid(tool_id) for tool_id in enabled_tool_ids}
+        enabled = {maybe_uuid(tool_id) for tool_id in enabled_tool_ids}
         enabled.discard(None)
         if not enabled:
             return []
 
-        run_uuid = self._maybe_uuid(run_id) if run_id else None
+        run_uuid = maybe_uuid(run_id) if run_id else None
         text = user_input.lower()
         results: list[dict[str, str]] = []
+        tool_calls: list[ToolCall] = []
+
         async with AsyncSessionLocal() as session:
             rows = (
                 await session.execute(
@@ -127,22 +133,43 @@ class ToolStore:
                 )
             ).scalars().all()
 
-        for tool in rows:
-            config = tool.config or {}
-            keywords = [str(item).lower() for item in config.get("trigger_keywords", [])]
-            if keywords and not any(keyword in text for keyword in keywords):
-                continue
-            test_result = await self.test_tool(str(tool.id), ToolTestRequest(input={"query": user_input}))
-            content = test_result.output if test_result.ok else test_result.error
-            results.append(
-                {
-                    "tool_id": str(tool.id),
-                    "name": tool.name,
-                    "content": str(content),
-                }
-            )
-            async with AsyncSessionLocal() as session:
-                session.add(
+            for tool in rows:
+                config = tool.config or {}
+                keywords = [str(item).lower() for item in config.get("trigger_keywords", [])]
+                if keywords and not any(keyword in text for keyword in keywords):
+                    continue
+                is_safe, reason = is_url_safe(config.get("url", ""))
+                if not is_safe:
+                    results.append(
+                        {
+                            "tool_id": str(tool.id),
+                            "name": tool.name,
+                            "content": f"URL blocked: {reason}",
+                        }
+                    )
+                    tool_calls.append(
+                        ToolCall(
+                            run_id=run_uuid,
+                            tool_id=tool.id,
+                            tool_name=tool.name,
+                            input=user_input,
+                            output=f"URL blocked: {reason}",
+                            status="failed",
+                            error=f"URL blocked: {reason}",
+                            detail={"ok": False},
+                        )
+                    )
+                    continue
+                test_result = await self.test_tool(str(tool.id), ToolTestRequest(input={"query": user_input}))
+                content = test_result.output if test_result.ok else test_result.error
+                results.append(
+                    {
+                        "tool_id": str(tool.id),
+                        "name": tool.name,
+                        "content": str(content),
+                    }
+                )
+                tool_calls.append(
                     ToolCall(
                         run_id=run_uuid,
                         tool_id=tool.id,
@@ -156,7 +183,10 @@ class ToolStore:
                         detail={"ok": test_result.ok},
                     )
                 )
-                await session.commit()
+
+            for tc in tool_calls:
+                session.add(tc)
+            await session.commit()
 
         return results
 
@@ -192,11 +222,6 @@ class ToolStore:
             enabled=tool.enabled,
         )
 
-    def _maybe_uuid(self, value: str) -> UUID | None:
-        try:
-            return UUID(value)
-        except ValueError:
-            return None
 
 
 tool_store = ToolStore()

@@ -2,11 +2,11 @@
   <div class="page-grid">
     <n-page-header>
       <template #title>
-        总览
+        {{ t('dashboard.title') }}
         <n-tag type="success" size="small" round class="version-tag">v{{ version }}</n-tag>
       </template>
       <template #subtitle>
-        AgentPilot v{{ version }} 第二版全部功能已完成 · 后台制造智能体，前台体验智能体
+        AgentPilot v{{ version }} {{ t('dashboard.subtitle') }}
       </template>
     </n-page-header>
 
@@ -30,33 +30,44 @@
       </n-card>
     </div>
 
-    <n-card title="第二版进度（已完成）">
-      <n-steps :current="8" status="finish">
-        <n-step title="智能体管理" description="编辑、发布、下线、复制、软删除" />
-        <n-step title="运行历史" description="Run 列表、详情、失败重试" />
-        <n-step title="工具系统" description="HTTP 工具创建、测试、运行时调用、调用日志" />
-        <n-step title="流式输出与检索增强" description="SSE、Embedding、pgvector、PDF 解析、多轮上下文" />
-        <n-step title="多模态检索" description="图片提取、多模态 Embedding、跨模态检索、MinIO 图片存储" />
-        <n-step title="基础权限" description="JWT 认证、角色权限、后台鉴权、前台匿名、Token 管理" />
-        <n-step title="前台体验增强" description="回答重试、错误提示、Mermaid 图表渲染" />
-        <n-step title="对话与智能体增强" description="会话管理、上下文压缩、多知识库、导入导出、反馈、模板库" />
+    <n-card :title="t('dashboard.progressTitle')">
+      <n-steps :current="16" status="finish">
+        <n-step :title="t('dashboard.steps.agentMgmt')" :description="t('dashboard.steps.agentMgmtDesc')" />
+        <n-step :title="t('dashboard.steps.runHistory')" :description="t('dashboard.steps.runHistoryDesc')" />
+        <n-step :title="t('dashboard.steps.toolSystem')" :description="t('dashboard.steps.toolSystemDesc')" />
+        <n-step :title="t('dashboard.steps.streamingRAG')" :description="t('dashboard.steps.streamingRAGDesc')" />
+        <n-step :title="t('dashboard.steps.multimodal')" :description="t('dashboard.steps.multimodalDesc')" />
+        <n-step :title="t('dashboard.steps.auth')" :description="t('dashboard.steps.authDesc')" />
+        <n-step :title="t('dashboard.steps.portalEnhance')" :description="t('dashboard.steps.portalEnhanceDesc')" />
+        <n-step :title="t('dashboard.steps.conversationEnhance')" :description="t('dashboard.steps.conversationEnhanceDesc')" />
+        <n-step :title="t('dashboard.steps.multiAgent')" :description="t('dashboard.steps.multiAgentDesc')" />
+        <n-step :title="t('dashboard.steps.toolChainOrchestration')" :description="t('dashboard.steps.toolChainOrchestrationDesc')" />
+        <n-step :title="t('dashboard.steps.evalStep')" :description="t('dashboard.steps.evalStepDesc')" />
+        <n-step :title="t('dashboard.steps.fileUploadStep')" :description="t('dashboard.steps.fileUploadStepDesc')" />
+        <n-step :title="t('dashboard.steps.workflowStep')" :description="t('dashboard.steps.workflowStepDesc')" />
+        <n-step :title="t('dashboard.steps.ragTuningStep')" :description="t('dashboard.steps.ragTuningStepDesc')" />
+        <n-step :title="t('dashboard.steps.websocketStep')" :description="t('dashboard.steps.websocketStepDesc')" />
+        <n-step :title="t('dashboard.steps.vectorDBStep')" :description="t('dashboard.steps.vectorDBStepDesc')" />
       </n-steps>
     </n-card>
 
     <div class="dashboard-grid">
-      <n-card title="常用入口">
+      <n-card :title="t('dashboard.quickAccess')">
         <div class="dashboard-actions">
-          <n-button type="primary" @click="router.push('/guide')">查看使用教程</n-button>
-          <n-button secondary @click="router.push('/agents')">创建智能体</n-button>
-          <n-button secondary @click="router.push('/knowledge')">管理知识库</n-button>
-          <n-button secondary @click="router.push('/tools')">工具管理</n-button>
-          <n-button secondary @click="router.push('/settings/model')">配置模型</n-button>
-          <n-button secondary @click="router.push('/runs')">运行历史</n-button>
-          <n-button secondary @click="router.push('/portal')">进入前台</n-button>
+          <n-button type="primary" @click="router.push('/guide')">{{ t('dashboard.viewGuide') }}</n-button>
+          <n-button secondary @click="router.push('/agents')">{{ t('dashboard.createAgent') }}</n-button>
+          <n-button secondary @click="router.push('/knowledge')">{{ t('dashboard.manageKB') }}</n-button>
+          <n-button secondary @click="router.push('/tools')">{{ t('dashboard.toolMgmt') }}</n-button>
+          <n-button secondary @click="router.push('/settings/model')">{{ t('dashboard.configModel') }}</n-button>
+          <n-button secondary @click="router.push('/runs')">{{ t('dashboard.runHistory') }}</n-button>
+          <n-button secondary @click="router.push('/eval')">{{ t('nav.eval') }}</n-button>
+          <n-button secondary @click="router.push('/workflows')">{{ t('nav.workflows') }}</n-button>
+          <n-button secondary @click="router.push('/rag-tuning')">{{ t('nav.ragTuning') }}</n-button>
+          <n-button secondary @click="router.push('/portal')">{{ t('common.goPortal') }}</n-button>
         </div>
       </n-card>
 
-      <n-card title="第二版已完成">
+      <n-card :title="t('dashboard.completed')">
         <n-list>
           <n-list-item v-for="item in completedItems" :key="item">
             <n-thing :title="item" />
@@ -70,10 +81,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 
 import { api } from "../api/client";
 
 const router = useRouter();
+const { t } = useI18n();
 
 interface StatsData {
   app: string;
@@ -92,6 +105,10 @@ interface StatsData {
   conversations: number;
   feedback_likes: number;
   feedback_dislikes: number;
+  eval_datasets: number;
+  eval_results: number;
+  workflows: number;
+  workflow_runs: number;
 }
 
 const stats = ref<StatsData | null>(null);
@@ -99,43 +116,83 @@ const version = ref("3.0.0");
 
 const modules = computed(() => [
   {
-    title: "鉴权",
-    desc: stats.value?.auth_enabled ? "JWT + bcrypt，角色权限控制" : "鉴权已关闭",
+    title: t('dashboard.modules.auth'),
+    desc: stats.value?.auth_enabled ? t('dashboard.modules.authDescOn') : t('dashboard.modules.authDescOff'),
     online: stats.value?.auth_enabled ?? true
   },
   {
-    title: "可观测性",
-    desc: "Trace ID、运行历史、工具调用日志",
+    title: t('dashboard.modules.observability'),
+    desc: t('dashboard.modules.observabilityDesc'),
     online: true
   },
   {
-    title: "RAG 检索",
-    desc: "pgvector 向量检索 + 多知识库合并",
+    title: t('dashboard.modules.rag'),
+    desc: t('dashboard.modules.ragDesc'),
     online: true
   },
   {
-    title: "流式输出",
-    desc: "SSE 实时回答 + 上下文压缩",
+    title: t('dashboard.modules.streaming'),
+    desc: t('dashboard.modules.streamingDesc'),
     online: true
   },
   {
-    title: "OCR 识别",
-    desc: stats.value?.ocr_enabled ? "Tesseract 扫描件 PDF" : "OCR 已关闭",
+    title: t('dashboard.modules.ocr'),
+    desc: stats.value?.ocr_enabled ? t('dashboard.modules.ocrDescOn') : t('dashboard.modules.ocrDescOff'),
     online: stats.value?.ocr_enabled ?? false
   },
   {
-    title: "多模态",
-    desc: "图片提取 + 跨模态检索 + MinIO",
+    title: t('dashboard.modules.multimodal'),
+    desc: t('dashboard.modules.multimodalDesc'),
     online: true
   },
   {
-    title: "对话记忆",
-    desc: "会话管理 + 上下文压缩 + 搜索",
+    title: t('dashboard.modules.conversation'),
+    desc: t('dashboard.modules.conversationDesc'),
     online: true
   },
   {
-    title: "反馈系统",
-    desc: "点赞/点踩 + 反馈统计",
+    title: t('dashboard.modules.feedback'),
+    desc: t('dashboard.modules.feedbackDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.multiAgent'),
+    desc: t('dashboard.modules.multiAgentDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.toolChain'),
+    desc: t('dashboard.modules.toolChainDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.eval'),
+    desc: t('dashboard.modules.evalDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.fileUpload'),
+    desc: t('dashboard.modules.fileUploadDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.workflow'),
+    desc: t('dashboard.modules.workflowDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.ragTuning'),
+    desc: t('dashboard.modules.ragTuningDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.websocket'),
+    desc: t('dashboard.modules.websocketDesc'),
+    online: true
+  },
+  {
+    title: t('dashboard.modules.vectorDB'),
+    desc: t('dashboard.modules.vectorDBDesc'),
     online: true
   }
 ]);
@@ -143,12 +200,14 @@ const modules = computed(() => [
 const metrics = computed(() => {
   const s = stats.value;
   return [
-    { label: "智能体总数", value: s?.agents_total ?? "-", hint: s ? `已发布 ${s.agents_published} 个` : "" },
-    { label: "运行总数", value: s?.runs_total ?? "-", hint: "累计执行次数" },
-    { label: "知识库", value: s?.knowledge_bases ?? "-", hint: s ? `${s.documents} 篇文档` : "" },
-    { label: "工具", value: s?.tools ?? "-", hint: s ? `${s.tool_calls} 次调用` : "" },
-    { label: "会话", value: s?.conversations ?? "-", hint: "前台对话记录" },
-    { label: "反馈", value: s ? `${s.feedback_likes}/${s.feedback_dislikes}` : "-", hint: "赞 / 踩" }
+    { label: t('dashboard.metrics.agentsTotal'), value: s?.agents_total ?? "-", hint: s ? t('dashboard.metrics.published', { n: s.agents_published }) : "" },
+    { label: t('dashboard.metrics.runsTotal'), value: s?.runs_total ?? "-", hint: t('dashboard.metrics.cumulative') },
+    { label: t('dashboard.metrics.knowledgeBases'), value: s?.knowledge_bases ?? "-", hint: s ? t('dashboard.metrics.docsCount', { n: s.documents }) : "" },
+    { label: t('dashboard.metrics.tools'), value: s?.tools ?? "-", hint: s ? t('dashboard.metrics.callsCount', { n: s.tool_calls }) : "" },
+    { label: t('dashboard.metrics.conversations'), value: s?.conversations ?? "-", hint: t('dashboard.metrics.conversationsHint') },
+    { label: t('dashboard.metrics.feedback'), value: s ? `${s.feedback_likes}/${s.feedback_dislikes}` : "-", hint: t('dashboard.metrics.likesDislikes') },
+    { label: t('dashboard.metrics.evalDatasets'), value: s?.eval_datasets ?? "-", hint: s ? t('dashboard.metrics.evalHint', { n: s.eval_results }) : "" },
+    { label: t('dashboard.metrics.workflow'), value: s?.workflows ?? "-", hint: s ? t('dashboard.metrics.workflowHint', { n: s.workflow_runs }) : "" }
   ];
 });
 
@@ -158,7 +217,7 @@ async function loadStats() {
     stats.value = response.data;
     version.value = response.data.version || "3.0.0";
   } catch (error) {
-    console.error("加载统计数据失败", error);
+    console.error(t('dashboard.loadStatsError'), error);
   }
 }
 
@@ -166,53 +225,10 @@ onMounted(() => {
   void loadStats();
 });
 
-const completedItems = [
-  "创建知识库",
-  "上传文档",
-  "文档切块并写入数据库",
-  "输入问题做检索测试",
-  "展示文档来源、命中文档片段和相似度",
-  "创建智能体",
-  "智能体绑定模型、知识库和应用工具",
-  "执行任务并展示回答、引用来源和执行轨迹",
-  "独立前台体验页",
-  "Docker Compose 一键启动和说明文档",
-  "智能体编辑、发布、下线、复制、软删除",
-  "前台只展示已发布智能体",
-  "运行历史列表和详情页",
-  "HTTP 工具创建、测试和运行时调用",
-  "SSE 流式输出（前台实时显示回答）",
-  "真实 Embedding 服务接入（Ollama bge-m3）",
-  "pgvector 数据库端向量检索",
-  "多轮对话支持",
-  "切换智能体时保留前台会话上下文",
-  "刷新服务台后保留会话和上下文",
-  "PDF 上传解析为可检索文本，避免二进制乱码切块",
-  "检索结果过滤乱码、重复片段和低相关上下文",
-  "PDF 图片提取并独立切块向量化",
-  "图片存入 MinIO 对象存储",
-  "多模态 Embedding（CLIP 等统一向量空间模型）",
-  "文本和图片在同一向量空间中检索",
-  "跨模态检索：文本查图片、图片查文本",
-  "检索结果区分文本块和图片块，图片块展示缩略图",
-  "引用来源支持图片引用展示",
-  "管理员登录（JWT + bcrypt 密码哈希）",
-  "后台 API 鉴权保护，前台匿名访问",
-  "Token 过期处理和退出登录",
-  "工具调用日志记录和查询",
-  "运行失败原因展示和重试入口",
-  "知识库文档级管理和单文档删除",
-  "前台回答重试（重新生成回答）",
-  "流式错误明确提示（区分网络/模型/超时错误）",
-  "Mermaid.js 图表渲染（流程图、时序图、甘特图）",
-  "OCR 支持扫描件 PDF（Tesseract + pdf2image）",
-  "对话记忆管理（历史会话列表、删除、搜索）",
-  "上下文压缩（滑动窗口 + 摘要，Token 超阈值自动压缩）",
-  "多知识库绑定（一个智能体绑定多个知识库，检索合并结果）",
-  "智能体导入/导出（JSON 格式跨环境迁移）",
-  "回答反馈（点赞/点踩记录到数据库）",
-  "Prompt 模板库（预置模板一键套用）"
-];
+const completedItems = computed(() => {
+  const items = (t('dashboard.completedItems') as unknown as string[]);
+  return Array.isArray(items) ? items : [];
+});
 </script>
 
 <style scoped>

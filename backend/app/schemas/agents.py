@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+import uuid as uuid_lib
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class AgentCreate(BaseModel):
@@ -9,6 +11,25 @@ class AgentCreate(BaseModel):
     model_config_id: str | None = None
     knowledge_base_ids: list[str] = Field(default_factory=list)
     tool_ids: list[str] = Field(default_factory=list)
+    sub_agent_ids: list[str] = Field(default_factory=list)
+    tool_chain: list[dict] = Field(default_factory=list)
+
+    @field_validator('model_config_id')
+    @classmethod
+    def validate_uuid(cls, v):
+        if v:
+            try:
+                uuid_lib.UUID(str(v))
+            except ValueError:
+                raise ValueError('Invalid UUID format')
+        return v
+
+    @field_validator('tool_chain')
+    @classmethod
+    def validate_tool_chain(cls, v):
+        if v and len(v) > 10:
+            raise ValueError('Tool chain cannot exceed 10 steps')
+        return v
 
 
 class AgentUpdate(BaseModel):
@@ -19,6 +40,8 @@ class AgentUpdate(BaseModel):
     model_config_id: str | None = None
     knowledge_base_ids: list[str] | None = None
     tool_ids: list[str] | None = None
+    sub_agent_ids: list[str] | None = None
+    tool_chain: list[dict] | None = None
 
 
 class AgentRead(AgentCreate):
@@ -35,6 +58,18 @@ class AgentRunCreate(BaseModel):
     agent_id: str
     input: str = Field(min_length=1)
     messages: list[ChatMessage] = Field(default_factory=list)
+    file_content: str = ""
+    file_name: str = ""
+
+    @field_validator('agent_id')
+    @classmethod
+    def validate_uuid(cls, v):
+        if v:
+            try:
+                uuid_lib.UUID(str(v))
+            except ValueError:
+                raise ValueError('Invalid UUID format')
+        return v
 
 
 class AgentRunSummary(BaseModel):

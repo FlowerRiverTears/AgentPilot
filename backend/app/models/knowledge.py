@@ -21,8 +21,9 @@ class Document(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("knowledge_bases.id"),
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="indexed", nullable=False)
@@ -32,7 +33,7 @@ class DocumentChunk(Base, TimestampMixin):
     __tablename__ = "document_chunks"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id"), nullable=False)
+    document_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     content_type: Mapped[str] = mapped_column(String(20), default="text", nullable=False)
     source: Mapped[str] = mapped_column(String(255), nullable=False)

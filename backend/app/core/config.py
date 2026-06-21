@@ -1,5 +1,9 @@
+import logging
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -47,6 +51,11 @@ class Settings(BaseSettings):
     admin_username: str = "admin"
     admin_password: str = "admin123"  # 初始管理员密码
 
+    # 安全配置
+    encryption_key: str = "agentpilot-encryption-key-change-in-production"  # For API key encryption
+    rate_limit_enabled: bool = True
+    login_rate_limit: str = "5/minute"  # Rate limit string for login
+
     # 上下文压缩配置
     context_token_threshold: int = 6000  # Token 估算超过此值时触发压缩
     recent_turns: int = 6  # 压缩时保留最近几轮对话原文
@@ -55,6 +64,41 @@ class Settings(BaseSettings):
     ocr_enabled: bool = True  # 是否启用扫描件 PDF 的 OCR
     ocr_language: str = "chi_sim+eng"  # Tesseract 语言代码
     ocr_dpi: int = 200  # PDF 转图片的 DPI
+
+    # 向量数据库配置
+    vector_db_backend: str = "pgvector"  # pgvector / qdrant
+    qdrant_url: str = "http://localhost:6333"  # Qdrant 服务地址
+
+    # RAG Pipeline
+    chunk_size: int = 800
+    chunk_overlap: int = 120
+
+    # File upload
+    max_file_size: int = 10 * 1024 * 1024  # 10MB
+    max_text_length: int = 8000
+
+    # OCR
+    ocr_scanned_threshold: int = 50  # Average chars per page threshold
+
+    # Embedding
+    embedding_timeout: int = 60
+    embedding_batch_timeout: int = 120
+
+    def validate_security(self) -> None:
+        """Validate security-critical settings at startup."""
+        if self.jwt_secret_key == "agentpilot-dev-secret-change-in-production":
+            if self.environment == "production":
+                raise RuntimeError(
+                    "JWT secret key must be changed in production! Set JWT_SECRET_KEY environment variable."
+                )
+            logger.warning(
+                "JWT secret key is using the default value. "
+                "Set JWT_SECRET_KEY environment variable for production."
+            )
+        if self.admin_password == "admin123":
+            logger.warning(
+                "Default admin password is in use. Please change ADMIN_PASSWORD for production."
+            )
 
 
 settings = Settings()

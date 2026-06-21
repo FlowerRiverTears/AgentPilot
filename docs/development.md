@@ -73,6 +73,7 @@ npm.cmd run build
 - `/settings/model`：模型配置
 - `/runs`：运行历史
 - `/chat`：运行测试
+- `/eval`：评测系统
 - `/portal`：独立前台体验页，刷新后保留会话和上下文
 
 `/portal` 不显示后台菜单；前台和后台通过按钮互相跳转。
@@ -164,14 +165,40 @@ frontend/src/stores/ui.ts
 
 ## 数据库迁移
 
-当前使用 `deploy/init.sql` + 应用启动时自动补齐字段的方式管理数据库 Schema。
+当前使用 Alembic 管理数据库迁移。
 
-已知问题：
-- 迁移不可回滚
-- 无版本记录
-- 多人协作时容易冲突
+### 创建迁移
 
-规划：引入 Alembic 管理数据库迁移，每次 Schema 变更生成迁移脚本，支持 upgrade/downgrade。
+修改模型后，生成迁移脚本：
+
+```bash
+cd backend
+alembic revision --autogenerate -m "描述本次变更"
+```
+
+### 执行迁移
+
+```bash
+cd backend
+alembic upgrade head
+```
+
+### 回滚迁移
+
+```bash
+cd backend
+alembic downgrade -1
+```
+
+### 查看迁移状态
+
+```bash
+cd backend
+alembic current
+alembic history
+```
+
+> 注意：Docker 环境中后端启动时会自动执行 `alembic upgrade head`，无需手动操作。
 
 ## 代码规范
 
@@ -199,9 +226,88 @@ frontend/src/stores/ui.ts
 | `AUTH_ENABLED` | `true` | 是否启用鉴权 |
 | `ADMIN_USERNAME` | `admin` | 默认管理员用户名 |
 | `ADMIN_PASSWORD` | `admin123` | 默认管理员密码（⚠️ 首次登录后请修改） |
+| `ENCRYPTION_KEY` | — | API Key 加密密钥（Fernet，生产环境必须设置） |
+| `RATE_LIMIT_ENABLED` | `true` | 是否启用登录限流 |
+| `LOGIN_RATE_LIMIT` | `5` | 每分钟最大登录尝试次数 |
 
 ## 日志
 
 - 后端日志输出到 stdout，Docker 环境下通过 `docker logs` 查看。
 - 日志级别：DEBUG / INFO / WARNING / ERROR。
 - 建议生产环境使用 JSON 结构化日志，便于日志聚合和分析。
+
+## v3.0 新增内容
+
+### 新增环境变量
+
+v3.0 新增以下环境变量，用于支持向量数据库切换、OCR、上下文压缩等新功能：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `VECTOR_DB_BACKEND` | `pgvector` | 向量数据库后端（pgvector/qdrant） |
+| `QDRANT_URL` | `http://localhost:6333` | Qdrant 服务地址 |
+| `APP_VERSION` | `3.0.0` | 应用版本号 |
+| `OCR_ENABLED` | `true` | 是否启用 OCR |
+| `OCR_LANGUAGE` | `chi_sim+eng` | Tesseract 语言 |
+| `OCR_DPI` | `200` | PDF 转图片 DPI |
+| `CONTEXT_TOKEN_THRESHOLD` | `6000` | 上下文压缩阈值 |
+| `CONTEXT_RECENT_TURNS` | `6` | 保留最近对话轮数 |
+
+> 说明：`VECTOR_DB_BACKEND` 切换为 `qdrant` 时需同时配置 `QDRANT_URL`；OCR 相关变量仅在 `OCR_ENABLED=true` 时生效；上下文压缩会在对话 token 数超过 `CONTEXT_TOKEN_THRESHOLD` 时触发，保留最近 `CONTEXT_RECENT_TURNS` 轮对话。
+
+### 新增 Python 依赖
+
+v3.0 后端新增以下 Python 依赖：
+
+- `pytesseract`：OCR 文字识别，用于扫描件和图片型 PDF 的文字提取。
+- `pdf2image`：PDF 转图片，配合 pytesseract 实现扫描件 OCR。
+
+安装方式：
+
+```bash
+cd backend
+pip install pytesseract pdf2image
+```
+
+> 系统依赖：使用 OCR 功能还需安装 Tesseract OCR 引擎和 poppler。Windows 可通过安装包安装 Tesseract，poppler 需单独配置；Linux 可通过 `apt install tesseract-ocr poppler-utils` 安装。
+
+### 新增前端依赖
+
+v3.0 前端新增以下依赖：
+
+- `mermaid`：图表渲染库，用于渲染 Mermaid 语法的流程图、时序图、甘特图等。
+
+安装方式：
+
+```bash
+cd frontend
+npm install mermaid
+```
+
+### 新增 API 路由
+
+v3.0 后端新增以下 API 路由：
+
+| 路由 | 说明 |
+|------|------|
+| `/api/conversations` | 会话管理（创建、查询、删除会话） |
+| `/api/feedback` | 反馈管理（点赞、点踩、统计查询） |
+| `/api/files` | 文件上传（支持 PDF/TXT/MD/图片） |
+| `/api/eval` | 智能体评测（数据集管理、触发评测、查看报告） |
+| `/api/workflows` | 工作流管理（工作流 CRUD、节点配置、执行） |
+| `/api/rag-tuning` | RAG 调优（检索参数配置、检索测试） |
+| `/ws/chat` | WebSocket 聊天（双向实时通信） |
+
+> 说明：`/ws/chat` 为 WebSocket 端点，不同于其他 REST 接口，使用 ws/wss 协议连接。
+
+### 新增前端页面
+
+v3.0 前端新增以下页面路由：
+
+| 路由 | 页面 | 说明 |
+|------|------|------|
+| `/eval` | 智能体评测 | 创建评测数据集、触发评测、查看准确率报告 |
+| `/workflows` | 工作流画布 | 可视化编排工作流节点和连线 |
+| `/rag-tuning` | RAG 调优 | 按知识库调整检索参数并实时测试 |
+
+> 说明：新增页面均需管理员登录后访问，路由定义在 `frontend/src/router/index.ts`。

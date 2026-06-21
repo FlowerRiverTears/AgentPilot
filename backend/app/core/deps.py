@@ -52,6 +52,13 @@ async def get_current_user(
         )
 
 
+async def get_current_admin(user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    """Dependency that requires admin role."""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 async def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> UserInfo | None:

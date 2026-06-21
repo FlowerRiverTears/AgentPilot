@@ -1,48 +1,48 @@
 <template>
   <div class="two-column">
-    <n-card :title="editingToolId ? '编辑工具' : '创建工具'">
+    <n-card :title="editingToolId ? t('tools.editTool') : t('tools.createTool')">
       <n-form label-placement="top">
         <section class="tool-form-section">
           <div class="section-header">
-            <h3>基础信息</h3>
+            <h3>{{ t('tools.basicInfo') }}</h3>
             <n-dropdown v-if="!editingToolId" :options="templateOptions" @select="loadTemplate">
               <n-button size="small" secondary>
-                加载示例模板 ▾
+                {{ t('tools.loadTemplate') }} ▾
               </n-button>
             </n-dropdown>
           </div>
-          <n-form-item label="名称">
-            <n-input v-model:value="form.name" placeholder="订单查询" />
+          <n-form-item :label="t('common.name')">
+            <n-input v-model:value="form.name" :placeholder="t('tools.namePlaceholder')" />
           </n-form-item>
-          <n-form-item label="描述">
-            <n-input v-model:value="form.description" placeholder="查询订单状态" />
+          <n-form-item :label="t('common.description')">
+            <n-input v-model:value="form.description" :placeholder="t('tools.descPlaceholder')" />
           </n-form-item>
-          <n-form-item label="触发关键词">
+          <n-form-item :label="t('tools.triggerKeywords')">
             <n-select
               v-model:value="form.config.trigger_keywords"
               multiple
               filterable
               tag
-              placeholder="例如：订单、物流、发货"
+              :placeholder="t('tools.keywordsPlaceholder')"
               :options="keywordOptions"
             />
           </n-form-item>
         </section>
 
         <section class="tool-form-section">
-          <h3>请求配置</h3>
-          <n-form-item label="请求地址">
+          <h3>{{ t('tools.requestConfig') }}</h3>
+          <n-form-item :label="t('tools.requestUrl')">
             <n-input v-model:value="form.config.url" placeholder="https://api.example.com/order" />
           </n-form-item>
           <div class="tool-inline-grid">
-            <n-form-item label="方法">
+            <n-form-item :label="t('tools.method')">
               <n-select
                 v-model:value="form.config.method"
                 :options="methodOptions"
-                placeholder="选择方法"
+                :placeholder="t('tools.selectMethod')"
               />
             </n-form-item>
-            <n-form-item label="超时（秒）">
+            <n-form-item :label="t('tools.timeoutSeconds')">
               <n-input-number v-model:value="form.config.timeout_seconds" :min="1" :max="120" />
             </n-form-item>
           </div>
@@ -57,22 +57,22 @@
           </n-form-item>
         </section>
 
-        <n-form-item label="状态" class="tool-status-field">
+        <n-form-item :label="t('common.status')" class="tool-status-field">
           <n-switch v-model:value="form.enabled" />
-          <span style="margin-left: 8px">{{ form.enabled ? "启用" : "停用" }}</span>
+          <span style="margin-left: 8px">{{ form.enabled ? t('tools.enabled') : t('tools.disabled') }}</span>
         </n-form-item>
 
         <div class="form-actions">
           <n-button type="primary" block @click="submit">
-            {{ editingToolId ? "保存修改" : "创建" }}
+            {{ editingToolId ? t('common.save') : t('common.create') }}
           </n-button>
-          <n-button v-if="editingToolId" block secondary @click="testTool">测试工具</n-button>
-          <n-button v-if="editingToolId" block @click="resetForm">取消编辑</n-button>
+          <n-button v-if="editingToolId" block secondary @click="testTool">{{ t('tools.testTool') }}</n-button>
+          <n-button v-if="editingToolId" block @click="resetForm">{{ t('tools.cancelEdit') }}</n-button>
         </div>
       </n-form>
     </n-card>
 
-    <n-card title="工具列表">
+    <n-card :title="t('tools.toolList')">
       <n-data-table :columns="columns" :data="store.tools" :bordered="false" />
     </n-card>
   </div>
@@ -81,10 +81,12 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref, watch } from "vue";
 import { NButton, NDropdown, NPopconfirm, NSpace, NTag, useMessage, type DataTableColumns, type DropdownOption } from "naive-ui";
+import { useI18n } from "vue-i18n";
 
 import type { HttpToolConfig, ToolDefinition, ToolPayload } from "../api/types";
 import { useWorkspaceStore } from "../stores/workspace";
 
+const { t } = useI18n();
 const message = useMessage();
 const store = useWorkspaceStore();
 const editingToolId = ref<string | null>(null);
@@ -116,10 +118,10 @@ const methodOptions = [
 ];
 
 const templateOptions: DropdownOption[] = [
-  { label: "📦 订单查询 — 查询订单状态和物流", key: "order" },
-  { label: "📋 库存查询 — 查询商品库存和仓库", key: "inventory" },
-  { label: "🌤️ 天气查询 — 查询城市天气信息", key: "weather" },
-  { label: "👤 用户查询 — 查询用户资料信息", key: "user" }
+  { label: () => t('tools.templateOrder'), key: "order" },
+  { label: () => t('tools.templateInventory'), key: "inventory" },
+  { label: () => t('tools.templateWeather'), key: "weather" },
+  { label: () => t('tools.templateUser'), key: "user" }
 ];
 
 interface ToolTemplate {
@@ -210,7 +212,7 @@ function loadTemplate(key: string) {
   headersText.value = JSON.stringify(template.headers, null, 2);
   queryText.value = JSON.stringify(template.query, null, 2);
   bodyText.value = JSON.stringify(template.body, null, 2);
-  message.info(`已加载「${template.name}」示例模板，点击创建即可添加`);
+  message.info(t('tools.templateLoaded', { name: template.name }));
 }
 
 const keywordOptions = computed(() =>
@@ -222,33 +224,33 @@ const keywordOptions = computed(() =>
 );
 
 const columns: DataTableColumns<ToolDefinition> = [
-  { title: "名称", key: "name", width: 150 },
-  { title: "类型", key: "type", width: 100 },
+  { title: t('common.name'), key: "name", width: 150 },
+  { title: t('tools.type'), key: "type", width: 100 },
   {
-    title: "描述",
+    title: t('common.description'),
     key: "description",
     ellipsis: { tooltip: true }
   },
   {
-    title: "状态",
+    title: t('common.status'),
     key: "enabled",
     width: 100,
     render: (row) =>
       h(NTag, { type: row.enabled ? "success" : "warning", size: "small" }, {
-        default: () => (row.enabled ? "启用" : "停用")
+        default: () => (row.enabled ? t('tools.enabled') : t('tools.disabled'))
       })
   },
   {
-    title: "操作",
+    title: t('common.actions'),
     key: "actions",
     width: 220,
     render(row) {
       return h(NSpace, { size: 8 }, {
         default: () => [
-          h(NButton, { size: "small", onClick: () => edit(row) }, { default: () => "编辑" }),
+          h(NButton, { size: "small", onClick: () => edit(row) }, { default: () => t('tools.edit') }),
           h(NPopconfirm, { onPositiveClick: () => remove(row) }, {
-            trigger: () => h(NButton, { size: "small", type: "error", secondary: true }, { default: () => "删除" }),
-            default: () => `确认删除 ${row.name}？`
+            trigger: () => h(NButton, { size: "small", type: "error", secondary: true }, { default: () => t('common.delete') }),
+            default: () => t('tools.confirmDelete', { name: row.name })
           })
         ]
       });
@@ -286,17 +288,17 @@ function readJson(text: string) {
   try {
     return text.trim() ? JSON.parse(text) : {};
   } catch {
-    throw new Error("JSON 格式有误");
+    throw new Error(t('tools.jsonFormatError'));
   }
 }
 
 async function submit() {
   if (!form.name.trim()) {
-    message.warning("请填写工具名称");
+    message.warning(t('tools.nameRequired'));
     return;
   }
   if (!form.config.url.trim()) {
-    message.warning("请填写请求地址");
+    message.warning(t('tools.urlRequired'));
     return;
   }
   try {
@@ -321,14 +323,14 @@ async function submit() {
 
     if (editingToolId.value) {
       await store.updateTool(editingToolId.value, payload);
-      message.success("工具已更新");
+      message.success(t('tools.updated'));
     } else {
       await store.createTool(payload);
-      message.success("工具已创建");
+      message.success(t('tools.created'));
     }
     resetForm();
   } catch (error) {
-    message.error(error instanceof Error ? error.message : "保存失败");
+    message.error(error instanceof Error ? error.message : t('tools.saveFailed'));
   }
 }
 
@@ -338,24 +340,24 @@ async function remove(tool: ToolDefinition) {
     if (editingToolId.value === tool.id) {
       resetForm();
     }
-    message.success("工具已删除");
+    message.success(t('tools.deleted'));
   } catch (e: any) {
-    message.error(e?.message || "删除失败");
+    message.error(e?.message || t('tools.deleteFailed'));
   }
 }
 
 async function testTool() {
   if (!editingToolId.value) {
-    message.warning("请先保存工具后再测试");
+    message.warning(t('tools.saveBeforeTest'));
     return;
   }
   try {
     const result = await store.testTool(editingToolId.value, {});
     message[result.ok ? "success" : "error"](
-      result.ok ? `测试通过，耗时 ${result.elapsed_ms} ms` : result.error || "测试失败"
+      result.ok ? t('tools.testPassed', { ms: result.elapsed_ms }) : result.error || t('tools.testFailed')
     );
   } catch {
-    message.error("测试失败");
+    message.error(t('tools.testFailed'));
   }
 }
 

@@ -1,18 +1,18 @@
 <template>
   <div class="settings-page">
-    <n-card title="模型配置">
+    <n-card :title="t('modelSettings.title')">
       <n-alert type="info" class="settings-tip">
-        可以维护多套 OpenAI-compatible 接口配置，例如 ollama、deepseek、minmax。运行任务默认使用标记为默认的配置。
+        {{ t('modelSettings.tip') }}
       </n-alert>
 
       <n-form label-placement="top">
-        <n-form-item label="配置名称">
-          <n-input v-model:value="form.name" placeholder="例如：ollama、minmax、deepseek" />
+        <n-form-item :label="t('modelSettings.configName')">
+          <n-input v-model:value="form.name" :placeholder="t('modelSettings.configNamePlaceholder')" />
         </n-form-item>
-        <n-form-item label="接口地址">
+        <n-form-item :label="t('modelSettings.baseUrl')">
           <n-input
             v-model:value="form.base_url"
-            placeholder="例如：https://api.openai.com/v1 或 http://host.docker.internal:11434/v1"
+            :placeholder="t('modelSettings.baseUrlPlaceholder')"
           />
         </n-form-item>
         <n-form-item label="API Token">
@@ -20,39 +20,39 @@
             v-model:value="form.api_key"
             type="password"
             show-password-on="click"
-            placeholder="编辑时留空表示不修改已有 Token"
+            :placeholder="t('modelSettings.apiTokenPlaceholder')"
           />
         </n-form-item>
-        <n-form-item label="默认模型">
-          <n-input v-model:value="form.default_model" placeholder="例如：gpt-4o-mini、deepseek-chat、qwen2.5:7b" />
+        <n-form-item :label="t('modelSettings.defaultModel')">
+          <n-input v-model:value="form.default_model" :placeholder="t('modelSettings.defaultModelPlaceholder')" />
         </n-form-item>
-        <n-checkbox v-model:checked="form.is_default">设为默认配置</n-checkbox>
+        <n-checkbox v-model:checked="form.is_default">{{ t('modelSettings.setAsDefault') }}</n-checkbox>
         <div class="settings-actions">
           <n-button type="primary" :loading="saving" @click="save">
-            {{ editingId ? "保存修改" : "新增配置" }}
+            {{ editingId ? t('common.save') : t('modelSettings.addConfig') }}
           </n-button>
-          <n-button v-if="editingId" @click="resetForm">取消编辑</n-button>
+          <n-button v-if="editingId" @click="resetForm">{{ t('modelSettings.cancelEdit') }}</n-button>
         </div>
       </n-form>
     </n-card>
 
-    <n-card title="配置列表">
+    <n-card :title="t('modelSettings.configList')">
       <n-data-table :columns="columns" :data="store.modelConfigs" :bordered="false" />
     </n-card>
 
-    <n-card title="当前默认">
+    <n-card :title="t('modelSettings.currentDefault')">
       <n-descriptions bordered :column="1" label-placement="left">
-        <n-descriptions-item label="配置名称">
-          {{ store.modelConfig?.name || "未加载" }}
+        <n-descriptions-item :label="t('modelSettings.configName')">
+          {{ store.modelConfig?.name || t('modelSettings.notLoaded') }}
         </n-descriptions-item>
-        <n-descriptions-item label="接口地址">
-          {{ store.modelConfig?.base_url || "未加载" }}
+        <n-descriptions-item :label="t('modelSettings.baseUrl')">
+          {{ store.modelConfig?.base_url || t('modelSettings.notLoaded') }}
         </n-descriptions-item>
         <n-descriptions-item label="Token">
-          {{ store.modelConfig?.api_key_set ? "已配置" : "未配置" }}
+          {{ store.modelConfig?.api_key_set ? t('modelSettings.configured') : t('modelSettings.notConfigured') }}
         </n-descriptions-item>
-        <n-descriptions-item label="默认模型">
-          {{ store.modelConfig?.default_model || "未加载" }}
+        <n-descriptions-item :label="t('modelSettings.defaultModel')">
+          {{ store.modelConfig?.default_model || t('modelSettings.notLoaded') }}
         </n-descriptions-item>
       </n-descriptions>
     </n-card>
@@ -62,10 +62,12 @@
 <script setup lang="ts">
 import { h, onMounted, reactive, ref } from "vue";
 import { NButton, NSpace, NTag, useDialog, useMessage, type DataTableColumns } from "naive-ui";
+import { useI18n } from "vue-i18n";
 
 import type { ModelConfig } from "../api/types";
 import { useWorkspaceStore } from "../stores/workspace";
 
+const { t } = useI18n();
 const message = useMessage();
 const dialog = useDialog();
 const store = useWorkspaceStore();
@@ -82,33 +84,33 @@ const form = reactive({
 });
 
 const columns: DataTableColumns<ModelConfig> = [
-  { title: "名称", key: "name" },
-  { title: "接口地址", key: "base_url", ellipsis: { tooltip: true } },
-  { title: "模型", key: "default_model" },
+  { title: t('common.name'), key: "name" },
+  { title: t('modelSettings.baseUrl'), key: "base_url", ellipsis: { tooltip: true } },
+  { title: t('modelSettings.model'), key: "default_model" },
   {
     title: "Token",
     key: "api_key_set",
     render(row) {
       return h(NTag, { type: row.api_key_set ? "success" : "warning", size: "small" }, {
-        default: () => (row.api_key_set ? "已配置" : "未配置")
+        default: () => (row.api_key_set ? t('modelSettings.configured') : t('modelSettings.notConfigured'))
       });
     }
   },
   {
-    title: "默认",
+    title: t('modelSettings.default'),
     key: "is_default",
     render(row) {
       return row.is_default
-        ? h(NTag, { type: "info", size: "small" }, { default: () => "默认" })
+        ? h(NTag, { type: "info", size: "small" }, { default: () => t('modelSettings.default') })
         : h(
             NButton,
             { size: "small", secondary: true, onClick: () => setDefault(row.id) },
-            { default: () => "设默认" }
+            { default: () => t('modelSettings.setDefault') }
           );
     }
   },
   {
-    title: "操作",
+    title: t('common.actions'),
     key: "actions",
     render(row) {
       return h(
@@ -116,7 +118,7 @@ const columns: DataTableColumns<ModelConfig> = [
         { size: 8 },
         {
           default: () => [
-            h(NButton, { size: "small", onClick: () => edit(row) }, { default: () => "编辑" }),
+            h(NButton, { size: "small", onClick: () => edit(row) }, { default: () => t('modelSettings.edit') }),
             h(
               NButton,
               {
@@ -125,7 +127,7 @@ const columns: DataTableColumns<ModelConfig> = [
                 loading: testingId.value === row.id,
                 onClick: () => test(row)
               },
-              { default: () => "测试" }
+              { default: () => t('modelSettings.test') }
             ),
             h(
               NButton,
@@ -136,7 +138,7 @@ const columns: DataTableColumns<ModelConfig> = [
                 disabled: row.is_default,
                 onClick: () => confirmDelete(row)
               },
-              { default: () => "删除" }
+              { default: () => t('common.delete') }
             )
           ]
         }
@@ -154,7 +156,7 @@ async function load() {
 
 function validate() {
   if (!form.name.trim() || !form.base_url.trim() || !form.default_model.trim()) {
-    message.warning("请填写配置名称、接口地址和默认模型");
+    message.warning(t('modelSettings.fillRequired'));
     return false;
   }
   return true;
@@ -176,14 +178,14 @@ async function save() {
     };
     if (editingId.value) {
       await store.updateNamedModelConfig(editingId.value, payload);
-      message.success("模型配置已更新");
+      message.success(t('modelSettings.updated'));
     } else {
       await store.createModelConfig(payload);
-      message.success("模型配置已新增");
+      message.success(t('modelSettings.added'));
     }
     resetForm();
   } catch (error) {
-    message.error("保存失败，请检查名称是否重复或后端服务是否正常");
+    message.error(t('modelSettings.saveFailed'));
     console.error(error);
   } finally {
     saving.value = false;
@@ -211,9 +213,9 @@ function resetForm() {
 async function setDefault(configId: string) {
   try {
     await store.setDefaultModelConfig(configId);
-    message.success("默认模型配置已切换");
+    message.success(t('modelSettings.defaultSwitched'));
   } catch (e: any) {
-    message.error(e?.message || "设置默认失败");
+    message.error(e?.message || t('modelSettings.setDefaultFailed'));
   }
 }
 
@@ -222,12 +224,12 @@ async function test(row: ModelConfig) {
   try {
     const result = await store.testModelConfig(row.id);
     if (result.ok) {
-      message.success(`${row.name} 测试成功：${result.message}`);
+      message.success(t('modelSettings.testSuccess', { name: row.name, message: result.message }));
     } else {
-      message.error(`${row.name} 测试失败：${result.message}`);
+      message.error(t('modelSettings.testFail', { name: row.name, message: result.message }));
     }
   } catch (error) {
-    message.error("测试失败，请检查后端服务");
+    message.error(t('modelSettings.testError'));
     console.error(error);
   } finally {
     testingId.value = null;
@@ -236,16 +238,16 @@ async function test(row: ModelConfig) {
 
 function confirmDelete(row: ModelConfig) {
   dialog.warning({
-    title: "删除模型配置",
-    content: `确认删除 ${row.name} 吗？`,
-    positiveText: "删除",
-    negativeText: "取消",
+    title: t('modelSettings.deleteConfig'),
+    content: t('modelSettings.confirmDelete', { name: row.name }),
+    positiveText: t('common.delete'),
+    negativeText: t('common.cancel'),
     onPositiveClick: async () => {
       try {
         await store.deleteModelConfig(row.id);
-        message.success("模型配置已删除");
+        message.success(t('modelSettings.deleted'));
       } catch (e: any) {
-        message.error(e?.message || "删除失败");
+        message.error(e?.message || t('modelSettings.deleteFailed'));
       }
     }
   });

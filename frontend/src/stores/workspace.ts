@@ -13,6 +13,7 @@ import type {
   RunResult,
   RunSummary,
   SampleDocument,
+  ToolChainStep,
   ToolDefinition,
   ToolPayload,
   ToolTestResult
@@ -47,6 +48,8 @@ export const useWorkspaceStore = defineStore("workspace", {
       model_config_id?: string | null;
       knowledge_base_ids: string[];
       tool_ids?: string[];
+      sub_agent_ids?: string[];
+      tool_chain?: ToolChainStep[];
     }) {
       const response = await api.post<Agent>("/agents", payload);
       this.agents.unshift(response.data);
@@ -60,6 +63,8 @@ export const useWorkspaceStore = defineStore("workspace", {
       model_config_id?: string | null;
       knowledge_base_ids: string[];
       tool_ids: string[];
+      sub_agent_ids?: string[];
+      tool_chain?: ToolChainStep[];
     }) {
       const response = await api.put<Agent>(`/agents/${agentId}`, payload);
       this.agents = this.agents.map((item) => (item.id === agentId ? response.data : item));

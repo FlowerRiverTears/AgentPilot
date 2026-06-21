@@ -1,3 +1,8 @@
+export interface ToolChainStep {
+  tool_id: string;
+  input_mapping: { query: string };
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -7,6 +12,8 @@ export interface Agent {
   model_config_id?: string | null;
   knowledge_base_ids: string[];
   tool_ids: string[];
+  sub_agent_ids?: string[];
+  tool_chain?: ToolChainStep[];
   status: string;
 }
 

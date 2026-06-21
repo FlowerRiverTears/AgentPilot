@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.deps import get_current_user
-from app.llm.gateway import llm_gateway
+from app.core.deps import get_current_admin
+from app.llm.gateway import get_llm_gateway
 from app.schemas.settings import (
     ModelConfigCreate,
     ModelConfigRead,
@@ -13,13 +13,13 @@ router = APIRouter()
 
 
 @router.get("/model", response_model=ModelConfigRead)
-async def get_model_config(_user=Depends(get_current_user)) -> ModelConfigRead:
-    return await llm_gateway.get_config()
+async def get_model_config(_user=Depends(get_current_admin)) -> ModelConfigRead:
+    return await get_llm_gateway().get_config()
 
 
 @router.put("/model", response_model=ModelConfigRead)
-async def update_model_config(payload: ModelConfigUpdate, _user=Depends(get_current_user)) -> ModelConfigRead:
-    configs = await llm_gateway.list_configs()
+async def update_model_config(payload: ModelConfigUpdate, _user=Depends(get_current_admin)) -> ModelConfigRead:
+    configs = await get_llm_gateway().list_configs()
     default_config = next((config for config in configs if config.is_default), None)
     if not default_config:
         create_data = {
@@ -29,47 +29,47 @@ async def update_model_config(payload: ModelConfigUpdate, _user=Depends(get_curr
             "default_model": payload.default_model or "",
             "is_default": True,
         }
-        return await llm_gateway.create_config(ModelConfigCreate(**create_data))
-    return await llm_gateway.update_config(default_config.id, payload)
+        return await get_llm_gateway().create_config(ModelConfigCreate(**create_data))
+    return await get_llm_gateway().update_config(default_config.id, payload)
 
 
 @router.get("/models", response_model=list[ModelConfigRead])
-async def list_model_configs(_user=Depends(get_current_user)) -> list[ModelConfigRead]:
-    await llm_gateway.ensure_defaults()
-    return await llm_gateway.list_configs()
+async def list_model_configs(_user=Depends(get_current_admin)) -> list[ModelConfigRead]:
+    await get_llm_gateway().ensure_defaults()
+    return await get_llm_gateway().list_configs()
 
 
 @router.post("/models", response_model=ModelConfigRead, status_code=201)
-async def create_model_config(payload: ModelConfigCreate, _user=Depends(get_current_user)) -> ModelConfigRead:
-    return await llm_gateway.create_config(payload)
+async def create_model_config(payload: ModelConfigCreate, _user=Depends(get_current_admin)) -> ModelConfigRead:
+    return await get_llm_gateway().create_config(payload)
 
 
 @router.put("/models/{config_id}", response_model=ModelConfigRead)
-async def update_named_model_config(config_id: str, payload: ModelConfigUpdate, _user=Depends(get_current_user)) -> ModelConfigRead:
+async def update_named_model_config(config_id: str, payload: ModelConfigUpdate, _user=Depends(get_current_admin)) -> ModelConfigRead:
     try:
-        return await llm_gateway.update_config(config_id, payload)
+        return await get_llm_gateway().update_config(config_id, payload)
     except KeyError:
         raise HTTPException(status_code=404, detail="Model config not found") from None
 
 
 @router.post("/models/{config_id}/default", response_model=ModelConfigRead)
-async def set_default_model_config(config_id: str, _user=Depends(get_current_user)) -> ModelConfigRead:
+async def set_default_model_config(config_id: str, _user=Depends(get_current_admin)) -> ModelConfigRead:
     try:
-        return await llm_gateway.set_default(config_id)
+        return await get_llm_gateway().set_default(config_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Model config not found") from None
 
 
 @router.post("/models/{config_id}/test", response_model=ModelConfigTestResult)
-async def test_model_config(config_id: str, _user=Depends(get_current_user)) -> ModelConfigTestResult:
+async def test_model_config(config_id: str, _user=Depends(get_current_admin)) -> ModelConfigTestResult:
     try:
-        return await llm_gateway.test_config(config_id)
+        return await get_llm_gateway().test_config(config_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Model config not found") from None
 
 
 @router.delete("/models/{config_id}", status_code=204)
-async def delete_model_config(config_id: str, _user=Depends(get_current_user)) -> None:
-    deleted = await llm_gateway.delete_config(config_id)
+async def delete_model_config(config_id: str, _user=Depends(get_current_admin)) -> None:
+    deleted = await get_llm_gateway().delete_config(config_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Model config not found")

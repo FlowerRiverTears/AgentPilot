@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from uuid import uuid4
 
+from app.core.config import settings
 from app.rag.document_loader import ExtractedImage
 from app.rag.text_quality import is_readable_text
 from app.schemas.knowledge import RetrievedChunk
@@ -13,7 +14,9 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
 
 
 class RAGPipeline:
-    def chunk_text(self, text: str, chunk_size: int = 800, overlap: int = 120) -> list[str]:
+    def chunk_text(self, text: str, chunk_size: int | None = None, overlap: int | None = None) -> list[str]:
+        chunk_size = chunk_size or settings.chunk_size
+        overlap = overlap or settings.chunk_overlap
         clean_text = self._normalize_text(text)
         if not clean_text:
             return []
@@ -53,8 +56,8 @@ class RAGPipeline:
                         metadata={
                             "chunk_index": index,
                             "chunking_method": "recursive-character",
-                            "chunk_size": 800,
-                            "overlap": 120,
+                            "chunk_size": settings.chunk_size,
+                            "overlap": settings.chunk_overlap,
                         },
                     )
                 )

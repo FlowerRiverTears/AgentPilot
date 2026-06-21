@@ -1,13 +1,14 @@
 import json
 from collections.abc import AsyncIterator
-from uuid import UUID
 
 import httpx
 from sqlalchemy import select, update
 
 from app.core.config import settings
+from app.core.crypto import decrypt_api_key, encrypt_api_key
 from app.db.session import AsyncSessionLocal
 from app.models import ModelConfig
+from app.repositories.base import maybe_uuid
 from app.schemas.settings import ModelConfigCreate, ModelConfigRead, ModelConfigTestResult, ModelConfigUpdate
 
 
@@ -31,7 +32,7 @@ class LLMGateway:
             row = ModelConfig(
                 name=self.config_name,
                 base_url=self.base_url,
-                api_key=self.api_key,
+                api_key=encrypt_api_key(self.api_key),
                 default_model=self.default_model,
                 is_default=True,
             )
@@ -46,7 +47,7 @@ class LLMGateway:
             return [self._row_to_read(row) for row in result.scalars().all()]
 
     async def get_config_by_id(self, config_id: str) -> ModelConfigRead | None:
-        config_uuid = self._maybe_uuid(config_id)
+        config_uuid = maybe_uuid(config_id)
         if not config_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -81,7 +82,7 @@ class LLMGateway:
             row = ModelConfig(
                 name=payload.name,
                 base_url=payload.base_url,
-                api_key=payload.api_key,
+                api_key=encrypt_api_key(payload.api_key),
                 default_model=payload.default_model,
                 is_default=payload.is_default,
             )
@@ -93,7 +94,7 @@ class LLMGateway:
             return self._row_to_read(row)
 
     async def update_config(self, config_id: str, payload: ModelConfigUpdate) -> ModelConfigRead:
-        config_uuid = self._maybe_uuid(config_id)
+        config_uuid = maybe_uuid(config_id)
         if not config_uuid:
             raise KeyError("Model config not found")
         async with AsyncSessionLocal() as session:
@@ -109,7 +110,7 @@ class LLMGateway:
             if payload.base_url is not None:
                 row.base_url = payload.base_url
             if payload.api_key is not None:
-                row.api_key = payload.api_key
+                row.api_key = encrypt_api_key(payload.api_key)
             if payload.default_model is not None:
                 row.default_model = payload.default_model
             if payload.is_default is not None:
@@ -121,7 +122,7 @@ class LLMGateway:
             return self._row_to_read(row)
 
     async def set_default(self, config_id: str) -> ModelConfigRead:
-        config_uuid = self._maybe_uuid(config_id)
+        config_uuid = maybe_uuid(config_id)
         if not config_uuid:
             raise KeyError("Model config not found")
         async with AsyncSessionLocal() as session:
@@ -136,7 +137,7 @@ class LLMGateway:
             return self._row_to_read(row)
 
     async def delete_config(self, config_id: str) -> bool:
-        config_uuid = self._maybe_uuid(config_id)
+        config_uuid = maybe_uuid(config_id)
         if not config_uuid:
             return False
         async with AsyncSessionLocal() as session:
@@ -158,7 +159,7 @@ class LLMGateway:
         try:
             content = await self._chat_completion(
                 config.base_url,
-                config.api_key,
+                decrypt_api_key(config.api_key),
                 config.default_model,
                 [{"role": "user", "content": "请只回复 OK，用于连通性测试。"}],
                 timeout=20,
@@ -183,7 +184,7 @@ class LLMGateway:
             config = await self._get_config_row(config_id)
             if config:
                 base_url = config.base_url
-                api_key = config.api_key
+                api_key = decrypt_api_key(config.api_key)
                 default_model = config.default_model
                 target_model = target_model or config.default_model
 
@@ -216,7 +217,7 @@ class LLMGateway:
             config = await self._get_config_row(config_id)
             if config:
                 base_url = config.base_url
-                api_key = config.api_key
+                api_key = decrypt_api_key(config.api_key)
                 default_model = config.default_model
                 target_model = target_model or config.default_model
 
@@ -315,7 +316,7 @@ class LLMGateway:
     def _apply_row(self, row: ModelConfig) -> None:
         self.config_name = row.name
         self.base_url = row.base_url
-        self.api_key = row.api_key
+        self.api_key = decrypt_api_key(row.api_key)
         self.default_model = row.default_model
 
     def _row_to_read(self, row: ModelConfig) -> ModelConfigRead:
@@ -329,17 +330,11 @@ class LLMGateway:
         )
 
     async def _get_config_row(self, config_id: str) -> ModelConfig | None:
-        config_uuid = self._maybe_uuid(config_id)
+        config_uuid = maybe_uuid(config_id)
         if not config_uuid:
             return None
         async with AsyncSessionLocal() as session:
             return await session.get(ModelConfig, config_uuid)
-
-    def _maybe_uuid(self, value: str) -> UUID | None:
-        try:
-            return UUID(value)
-        except ValueError:
-            return None
 
     async def _chat_completion(
         self,
@@ -403,4 +398,12 @@ class LLMGateway:
         return str(exc)
 
 
-llm_gateway = LLMGateway()
+_llm_gateway = None
+
+
+def get_llm_gateway() -> "LLMGateway":
+    """Lazy-initialized LLM gateway singleton."""
+    global _llm_gateway
+    if _llm_gateway is None:
+        _llm_gateway = LLMGateway()
+    return _llm_gateway

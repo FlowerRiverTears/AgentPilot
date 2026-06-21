@@ -1,20 +1,20 @@
 <template>
   <div class="page-grid">
     <div class="two-column">
-      <n-card title="创建知识库">
+      <n-card :title="t('knowledge.createKB')">
         <n-form label-placement="top">
-          <n-form-item label="名称" :feedback="nameFeedback" :validation-status="nameStatus">
-            <n-input v-model:value="form.name" placeholder="产品文档库" @keyup.enter="submit" />
+          <n-form-item :label="t('common.name')" :feedback="nameFeedback" :validation-status="nameStatus">
+            <n-input v-model:value="form.name" :placeholder="t('knowledge.kbNamePlaceholder')" @keyup.enter="submit" />
           </n-form-item>
-          <n-form-item label="描述">
-            <n-input v-model:value="form.description" placeholder="产品、售后和政策资料" />
+          <n-form-item :label="t('common.description')">
+            <n-input v-model:value="form.description" :placeholder="t('knowledge.kbDescPlaceholder')" />
           </n-form-item>
-          <n-button type="primary" block :loading="creating" @click="submit">创建知识库</n-button>
+          <n-button type="primary" block :loading="creating" @click="submit">{{ t('knowledge.createKB') }}</n-button>
         </n-form>
       </n-card>
-      <n-card title="知识库列表">
+      <n-card :title="t('knowledge.kbList')">
         <n-alert v-if="selectedKnowledgeBase" type="success" class="selected-kb-tip">
-          当前已选择：{{ selectedKnowledgeBase.name }}
+          {{ t('knowledge.currentSelected') }}{{ selectedKnowledgeBase.name }}
         </n-alert>
         <n-data-table
           :columns="columns"
@@ -28,19 +28,19 @@
     </div>
 
     <div class="two-column">
-      <n-card title="导入文档">
+      <n-card :title="t('knowledge.importDocs')">
         <n-alert type="info" class="selected-kb-tip">
-          可以直接选择内置标准文档导入知识库，也可以上传自己的 PDF、Markdown 或文本文件。
+          {{ t('knowledge.importDocsHint') }}
         </n-alert>
         <n-form label-placement="top">
-          <n-form-item label="知识库">
-            <n-select v-model:value="selectedKbId" :options="kbOptions" placeholder="选择知识库" />
+          <n-form-item :label="t('knowledge.knowledgeBase')">
+            <n-select v-model:value="selectedKbId" :options="kbOptions" :placeholder="t('knowledge.selectKB')" />
           </n-form-item>
-          <n-form-item label="示例文档">
+          <n-form-item :label="t('knowledge.sampleDocument')">
             <n-select
               v-model:value="selectedSampleDocumentId"
               :options="sampleDocumentOptions"
-              placeholder="选择一份内置示例文档"
+              :placeholder="t('knowledge.selectSampleDoc')"
             />
           </n-form-item>
           <n-button
@@ -49,11 +49,11 @@
             :loading="importingSample"
             @click="importSample"
           >
-            导入示例文档
+            {{ t('knowledge.importSampleDoc') }}
           </n-button>
-          <n-divider>或上传本地文档</n-divider>
+          <n-divider>{{ t('knowledge.orUploadLocal') }}</n-divider>
           <n-upload :max="1" :default-upload="false" @change="onFileChange">
-            <n-button>选择文档</n-button>
+            <n-button>{{ t('knowledge.selectDoc') }}</n-button>
           </n-upload>
           <n-button
             class="action-button"
@@ -62,25 +62,25 @@
             :loading="uploading"
             @click="upload"
           >
-            上传并切块
+            {{ t('knowledge.uploadAndChunk') }}
           </n-button>
         </n-form>
       </n-card>
 
-      <n-card title="检索测试">
+      <n-card :title="t('knowledge.retrievalTest')">
         <n-form label-placement="top">
-          <n-form-item label="问题">
+          <n-form-item :label="t('knowledge.question')">
             <n-input
               v-model:value="query"
               type="textarea"
               :autosize="{ minRows: 4, maxRows: 8 }"
-              placeholder="输入要检索的问题"
+              :placeholder="t('knowledge.enterQuery')"
             />
           </n-form-item>
-          <n-button type="primary" block :loading="retrieving" @click="retrieve">文本检索</n-button>
-          <n-divider>或上传图片检索（跨模态）</n-divider>
+          <n-button type="primary" block :loading="retrieving" @click="retrieve">{{ t('knowledge.textRetrieval') }}</n-button>
+          <n-divider>{{ t('knowledge.orUploadImage') }}</n-divider>
           <n-upload :max="1" :default-upload="false" accept="image/*" @change="onImageChange">
-            <n-button>选择图片</n-button>
+            <n-button>{{ t('knowledge.selectImage') }}</n-button>
           </n-upload>
           <n-button
             class="action-button"
@@ -89,22 +89,22 @@
             :loading="retrievingByImage"
             @click="retrieveByImage"
           >
-            图片检索
+            {{ t('knowledge.imageRetrieval') }}
           </n-button>
         </n-form>
       </n-card>
     </div>
 
-    <n-card title="检索结果">
+    <n-card :title="t('knowledge.retrievalResults')">
       <div v-if="retrieved.length" class="retrieval-list">
         <n-card v-for="(chunk, index) in retrieved" :key="chunk.chunk_id" size="small" class="retrieval-item">
           <div class="retrieval-head">
             <div>
               <div class="retrieval-title">#{{ index + 1 }} {{ chunk.source }}</div>
-              <div class="muted">相似度：{{ chunk.score.toFixed(3) }}</div>
+              <div class="muted">{{ t('knowledge.similarity') }}{{ chunk.score.toFixed(3) }}</div>
             </div>
             <n-tag :type="chunk.content_type === 'image' ? 'warning' : 'info'" size="small">
-              {{ chunk.content_type === 'image' ? '图片' : '切片' }}
+              {{ chunk.content_type === 'image' ? t('knowledge.image') : t('knowledge.chunk') }}
             </n-tag>
           </div>
           <div v-if="chunk.content_type === 'image' && chunk.image_url" class="retrieval-image">
@@ -115,16 +115,16 @@
             {{ snippet(chunk.content) }}
           </div>
           <n-collapse v-if="chunk.content_type !== 'image'">
-            <n-collapse-item title="查看原文" name="raw">
+            <n-collapse-item :title="t('knowledge.viewOriginal')" name="raw">
               <pre class="retrieval-raw">{{ chunk.content }}</pre>
             </n-collapse-item>
           </n-collapse>
         </n-card>
       </div>
-      <n-empty v-else description="暂无检索结果" />
+      <n-empty v-else :description="t('knowledge.noResults')" />
     </n-card>
 
-    <n-modal v-model:show="showDocuments" preset="card" title="文档管理" style="max-width: 700px">
+    <n-modal v-model:show="showDocuments" preset="card" :title="t('knowledge.docManagement')" style="max-width: 700px">
       <n-data-table
         :columns="documentColumns"
         :data="documents"
@@ -138,14 +138,18 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from "vue";
 import { NButton, NSpace, useDialog, useMessage, type DataTableColumns, type UploadFileInfo } from "naive-ui";
+import { useI18n } from "vue-i18n";
 
 import type { KnowledgeBase, RetrievedChunk } from "../api/types";
 import { api } from "../api/client";
 import { useWorkspaceStore } from "../stores/workspace";
+import { useUiStore } from "../stores/ui";
 
+const { t } = useI18n();
 const message = useMessage();
 const dialog = useDialog();
 const store = useWorkspaceStore();
+const ui = useUiStore();
 
 const form = reactive({ name: "", description: "" });
 const creating = ref(false);
@@ -165,23 +169,23 @@ const documents = ref<any[]>([]);
 const loadingDocuments = ref(false);
 
 const documentColumns: DataTableColumns<any> = [
-  { title: "文件名", key: "filename" },
-  { title: "切片数", key: "chunk_count" },
+  { title: t('knowledge.filename'), key: "filename" },
+  { title: t('knowledge.chunkCount'), key: "chunk_count" },
   {
-    title: "创建时间",
+    title: t('knowledge.createdAt'),
     key: "created_at",
     render(row) {
-      try { return new Date(row.created_at).toLocaleString("zh-CN"); } catch { return row.created_at; }
+      try { return new Date(row.created_at).toLocaleString(ui.locale === 'zh' ? 'zh-CN' : 'en-US'); } catch { return row.created_at; }
     }
   },
   {
-    title: "操作",
+    title: t('common.actions'),
     key: "actions",
     render(row) {
       return h(
         NButton,
         { size: "small", type: "error", secondary: true, onClick: () => confirmDeleteDocument(row) },
-        { default: () => "删除" }
+        { default: () => t('common.delete') }
       );
     }
   }
@@ -213,16 +217,16 @@ const nameFeedback = computed(() => {
   if (!triedSubmit.value || form.name.trim()) {
     return "";
   }
-  return "知识库名称不能为空";
+  return t('knowledge.kbNameRequired');
 });
 
 const columns: DataTableColumns<KnowledgeBase> = [
   { type: "selection" },
-  { title: "名称", key: "name" },
-  { title: "描述", key: "description" },
-  { title: "文档数", key: "document_count" },
+  { title: t('common.name'), key: "name" },
+  { title: t('common.description'), key: "description" },
+  { title: t('knowledge.docCount'), key: "document_count" },
   {
-    title: "操作",
+    title: t('common.actions'),
     key: "actions",
     render(row) {
       return h(
@@ -239,7 +243,7 @@ const columns: DataTableColumns<KnowledgeBase> = [
                   selectKnowledgeBase(row);
                 }
               },
-              { default: () => (row.id === selectedKbId.value ? "已选择" : "选择") }
+              { default: () => (row.id === selectedKbId.value ? t('knowledge.selected') : t('knowledge.select')) }
             ),
             h(
               NButton,
@@ -248,7 +252,7 @@ const columns: DataTableColumns<KnowledgeBase> = [
                 secondary: true,
                 onClick: () => openDocuments(row)
               },
-              { default: () => "文档" }
+              { default: () => t('knowledge.documents') }
             ),
             h(
               NButton,
@@ -258,7 +262,7 @@ const columns: DataTableColumns<KnowledgeBase> = [
                 secondary: true,
                 onClick: () => confirmDelete(row)
               },
-              { default: () => "删除" }
+              { default: () => t('common.delete') }
             )
           ]
         }
@@ -273,7 +277,7 @@ function rowKey(row: KnowledgeBase) {
 
 function selectKnowledgeBase(row: KnowledgeBase) {
   selectedKbId.value = row.id;
-  message.info(`已选择：${row.name}`);
+  message.info(`${t('knowledge.selected')}${row.name}`);
 }
 
 function rowProps(row: KnowledgeBase) {
@@ -315,7 +319,7 @@ async function submit() {
   triedSubmit.value = true;
   const name = form.name.trim();
   if (!name) {
-    message.warning("请先填写知识库名称");
+    message.warning(t('knowledge.fillKBName'));
     return;
   }
 
@@ -326,12 +330,12 @@ async function submit() {
       description: form.description.trim()
     });
     selectedKbId.value = created.id;
-    message.success("知识库已创建");
+    message.success(t('knowledge.kbCreated'));
     form.name = "";
     form.description = "";
     triedSubmit.value = false;
   } catch (error) {
-    message.error("创建失败，请检查后端服务或输入内容");
+    message.error(t('knowledge.createFailed'));
     console.error(error);
   } finally {
     creating.value = false;
@@ -340,20 +344,20 @@ async function submit() {
 
 async function upload() {
   if (!selectedKbId.value) {
-    message.warning("请先选择知识库");
+    message.warning(t('knowledge.selectKBFirst'));
     return;
   }
   if (!selectedFile.value) {
-    message.warning("请先选择文件");
+    message.warning(t('knowledge.selectFileFirst'));
     return;
   }
 
   uploading.value = true;
   try {
     const chunks = await store.uploadKnowledgeDocument(selectedKbId.value, selectedFile.value);
-    message.success(`上传成功，生成 ${chunks.length} 个切片`);
+    message.success(t('knowledge.uploadSuccess', { count: chunks.length }));
   } catch (error) {
-    message.error("上传失败，请确认文件内容可读取");
+    message.error(t('knowledge.uploadFailed'));
     console.error(error);
   } finally {
     uploading.value = false;
@@ -362,20 +366,20 @@ async function upload() {
 
 async function importSample() {
   if (!selectedKbId.value) {
-    message.warning("请先选择知识库");
+    message.warning(t('knowledge.selectKBFirst'));
     return;
   }
   if (!selectedSampleDocumentId.value) {
-    message.warning("请先选择示例文档");
+    message.warning(t('knowledge.selectSampleDocFirst'));
     return;
   }
 
   importingSample.value = true;
   try {
     const chunks = await store.importSampleDocument(selectedKbId.value, selectedSampleDocumentId.value);
-    message.success(`导入成功，生成 ${chunks.length} 个切片`);
+    message.success(t('knowledge.importSampleSuccess', { count: chunks.length }));
   } catch (error) {
-    message.error("导入失败，请检查后端服务");
+    message.error(t('knowledge.importSampleFailed'));
     console.error(error);
   } finally {
     importingSample.value = false;
@@ -384,11 +388,11 @@ async function importSample() {
 
 async function retrieve() {
   if (!selectedKbId.value) {
-    message.warning("请先选择知识库");
+    message.warning(t('knowledge.selectKBFirst'));
     return;
   }
   if (!query.value.trim()) {
-    message.warning("请输入检索问题");
+    message.warning(t('knowledge.enterQueryFirst'));
     return;
   }
 
@@ -396,10 +400,10 @@ async function retrieve() {
   try {
     retrieved.value = await store.retrieveKnowledge(selectedKbId.value, query.value.trim());
     if (!retrieved.value.length) {
-      message.info("没有检索到内容，请先上传文档");
+      message.info(t('knowledge.noContentRetrieved'));
     }
   } catch (error) {
-    message.error("检索失败");
+    message.error(t('knowledge.retrievalFailed'));
     console.error(error);
   } finally {
     retrieving.value = false;
@@ -408,11 +412,11 @@ async function retrieve() {
 
 async function retrieveByImage() {
   if (!selectedKbId.value) {
-    message.warning("请先选择知识库");
+    message.warning(t('knowledge.selectKBFirst'));
     return;
   }
   if (!selectedImageFile.value) {
-    message.warning("请先选择图片");
+    message.warning(t('knowledge.selectImageFirst'));
     return;
   }
 
@@ -427,10 +431,10 @@ async function retrieveByImage() {
     );
     retrieved.value = response.data;
     if (!retrieved.value.length) {
-      message.info("没有检索到内容，请先上传含图片的文档");
+      message.info(t('knowledge.noImageContentRetrieved'));
     }
   } catch (error) {
-    message.error("图片检索失败，请确认已配置多模态 Embedding 服务");
+    message.error(t('knowledge.imageRetrievalFailed'));
     console.error(error);
   } finally {
     retrievingByImage.value = false;
@@ -439,17 +443,17 @@ async function retrieveByImage() {
 
 function confirmDelete(row: KnowledgeBase) {
   dialog.warning({
-    title: "删除知识库",
-    content: `确认删除「${row.name}」吗？删除后该知识库的文档切片和检索结果也会被清除。`,
-    positiveText: "确认删除",
-    negativeText: "取消",
+    title: t('knowledge.deleteKB'),
+    content: t('knowledge.confirmDeleteKB', { name: row.name }),
+    positiveText: t('knowledge.confirmDeleteBtn'),
+    negativeText: t('common.cancel'),
     onPositiveClick: async () => {
       await store.deleteKnowledgeBase(row.id);
       if (selectedKbId.value === row.id) {
         selectedKbId.value = store.knowledgeBases[0]?.id ?? null;
       }
       retrieved.value = [];
-      message.success("知识库已删除");
+      message.success(t('knowledge.kbDeleted'));
     }
   });
 }
@@ -461,7 +465,7 @@ async function openDocuments(kb: KnowledgeBase) {
     const response = await api.get(`/knowledge-bases/${kb.id}/documents`);
     documents.value = response.data;
   } catch {
-    message.error("加载文档列表失败");
+    message.error(t('knowledge.loadDocsFailed'));
   } finally {
     loadingDocuments.value = false;
   }
@@ -469,19 +473,19 @@ async function openDocuments(kb: KnowledgeBase) {
 
 function confirmDeleteDocument(doc: any) {
   dialog.warning({
-    title: "删除文档",
-    content: `确认删除「${doc.filename}」吗？该文档的所有切片将被清除。`,
-    positiveText: "确认删除",
-    negativeText: "取消",
+    title: t('knowledge.deleteDoc'),
+    content: t('knowledge.confirmDeleteDoc', { filename: doc.filename }),
+    positiveText: t('knowledge.confirmDeleteBtn'),
+    negativeText: t('common.cancel'),
     onPositiveClick: async () => {
       try {
         const currentKbId = selectedKbId.value;
         await api.delete(`/knowledge-bases/${currentKbId}/documents/${doc.id}`);
-        message.success("文档已删除");
+        message.success(t('knowledge.docDeleted'));
         documents.value = documents.value.filter((d: any) => d.id !== doc.id);
         await store.loadKnowledgeBases();
       } catch {
-        message.error("删除文档失败");
+        message.error(t('knowledge.deleteDocFailed'));
       }
     }
   });

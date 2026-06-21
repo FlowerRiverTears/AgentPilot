@@ -35,8 +35,8 @@ services:
       MINIO_ROOT_USER: agentpilot
       MINIO_ROOT_PASSWORD: agentpilot123
     ports:
-      - "19000:9000"
-      - "19001:9001"
+      - "29000:9000"
+      - "29001:9001"
     volumes:
       - agentpilot-minio-data:/data
 
@@ -46,6 +46,10 @@ services:
       context: ../backend
     env_file:
       - ../.env
+    environment:
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-agentpilot-encryption-key-change-in-production}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - LOGIN_RATE_LIMIT=${LOGIN_RATE_LIMIT:-5/minute}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -55,6 +59,12 @@ services:
         condition: service_healthy
       agentpilot-redis:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   agentpilot-frontend:
     container_name: agentpilot-frontend

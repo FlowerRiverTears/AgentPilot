@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import JSON, CheckConstraint, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -17,12 +17,17 @@ class Agent(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False)
     config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'published', 'deleted')", name="ck_agent_status"),
+    )
+
 
 class AgentRun(Base, TimestampMixin):
     __tablename__ = "agent_runs"
+    __table_args__ = (Index("ix_agent_runs_created_at", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(30), default="running", nullable=False)
     input: Mapped[str] = mapped_column(Text, nullable=False)
     output: Mapped[str | None] = mapped_column(Text)
@@ -34,7 +39,7 @@ class RunStep(Base, TimestampMixin):
     __tablename__ = "run_steps"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_runs.id"), nullable=False)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False)
     detail: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

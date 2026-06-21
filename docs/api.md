@@ -485,3 +485,760 @@ Mock 接口提供模拟数据，用于工具测试和演示。
 导出智能体配置为 JSON（需鉴权）。
 
 返回包含智能体完整配置和 `exported_at` 时间戳。
+
+## 评测系统
+
+### POST `/eval/datasets`
+
+创建评测数据集（需鉴权）。
+
+### GET `/eval/datasets`
+
+列出评测数据集（需鉴权）。
+
+### GET `/eval/datasets/{dataset_id}`
+
+获取数据集详情（需鉴权）。
+
+### DELETE `/eval/datasets/{dataset_id}`
+
+删除数据集（需鉴权）。
+
+### POST `/eval/datasets/{dataset_id}/run`
+
+执行评测（需鉴权）。
+
+### GET `/eval/results`
+
+列出评测结果（需鉴权）。
+
+### GET `/eval/results/{result_id}`
+
+获取评测结果详情（需鉴权）。
+
+## 文件上传
+
+### POST `/files/upload`
+
+上传文件（PDF/图片/TXT，最大 10MB，需鉴权）。
+
+请求：`multipart/form-data`
+
+- `file`：文件内容
+
+响应：
+
+```json
+{
+  "filename": "example.pdf",
+  "content": "提取的文本内容",
+  "char_count": 1234
+}
+```
+
+## v3.0 新增 API
+
+v3.0 版本新增会话管理、反馈、文件上传、智能体评测、工作流、RAG 调优、WebSocket 实时通信及健康检查增强等 API。以下为各接口详细说明。
+
+### 会话管理 API
+
+#### GET `/conversations`
+
+获取会话列表，支持按关键词搜索。
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| search | string | 否 | 搜索关键词，匹配会话标题或摘要 |
+
+响应示例：
+
+```json
+[
+  {
+    "id": "conv-001",
+    "session_id": "sess-abc123",
+    "title": "产品咨询",
+    "summary": "用户询问了产品功能",
+    "created_at": "2026-06-21T10:00:00",
+    "updated_at": "2026-06-21T10:05:00"
+  }
+]
+```
+
+#### GET `/conversations/{id}`
+
+获取单个会话详情。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 会话 ID |
+
+响应示例：
+
+```json
+{
+  "id": "conv-001",
+  "session_id": "sess-abc123",
+  "messages": [
+    {"role": "user", "content": "你好"},
+    {"role": "assistant", "content": "您好，有什么可以帮您？"}
+  ],
+  "summary": "用户问候",
+  "created_at": "2026-06-21T10:00:00",
+  "updated_at": "2026-06-21T10:05:00"
+}
+```
+
+#### POST `/conversations`
+
+创建会话。
+
+请求 Body：
+
+```json
+{
+  "agent_id": "...",
+  "session_id": "sess-abc123",
+  "title": "产品咨询",
+  "messages": [
+    {"role": "user", "content": "你好"}
+  ],
+  "summary": ""
+}
+```
+
+响应示例：
+
+```json
+{
+  "id": "conv-001",
+  "session_id": "sess-abc123",
+  "title": "产品咨询",
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+#### DELETE `/conversations/{id}`
+
+删除会话。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 会话 ID |
+
+响应示例：
+
+```json
+{
+  "detail": "已删除"
+}
+```
+
+### 反馈 API
+
+#### POST `/feedback`
+
+提交回答反馈（支持匿名提交）。
+
+请求 Body：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| run_id | UUID | 否* | 关联运行记录 |
+| agent_id | UUID | 否* | 关联智能体 |
+| rating | string | 是 | `like` 或 `dislike` |
+| comment | string | 否 | 反馈评论 |
+
+> *`run_id` 和 `agent_id` 至少填一个。
+
+请求示例：
+
+```json
+{
+  "run_id": "...",
+  "agent_id": "...",
+  "rating": "like",
+  "comment": "回答很准确"
+}
+```
+
+响应示例：
+
+```json
+{
+  "id": "fb-001",
+  "rating": "like",
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+#### GET `/feedback`
+
+获取反馈列表（需鉴权）。
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| agent_id | UUID | 否 | 按智能体过滤 |
+
+响应示例：
+
+```json
+[
+  {
+    "id": "fb-001",
+    "run_id": "...",
+    "agent_id": "...",
+    "rating": "like",
+    "comment": "回答很准确",
+    "created_at": "2026-06-21T10:00:00"
+  }
+]
+```
+
+#### GET `/feedback/stats`
+
+获取反馈统计（需鉴权），返回赞/踩数量。
+
+响应示例：
+
+```json
+{
+  "total": 100,
+  "like": 85,
+  "dislike": 15,
+  "by_agent": [
+    {"agent_id": "...", "agent_name": "客服助手", "like": 50, "dislike": 5}
+  ]
+}
+```
+
+### 文件上传 API
+
+#### POST `/files/upload`
+
+上传文件并提取文本内容（需鉴权）。
+
+请求类型：`multipart/form-data`
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| file | file | 是 | 文件内容 |
+
+支持类型：PDF、TXT、MD、图片（PNG/JPG）
+大小限制：10MB
+
+响应示例：
+
+```json
+{
+  "file_id": "file-001",
+  "filename": "example.pdf",
+  "content_type": "application/pdf",
+  "text_content": "提取的文本内容...",
+  "char_count": 1234,
+  "message": "文件上传成功"
+}
+```
+
+### 智能体评测 API
+
+#### GET `/eval/datasets`
+
+获取评测数据集列表（需鉴权）。
+
+响应示例：
+
+```json
+[
+  {
+    "id": "ds-001",
+    "name": "客服评测集",
+    "description": "客服场景测试",
+    "agent_id": "...",
+    "cases": [
+      {"question": "如何退货？", "expected_keywords": ["退货", "7天"]}
+    ],
+    "created_at": "2026-06-21T10:00:00"
+  }
+]
+```
+
+#### POST `/eval/datasets`
+
+创建评测数据集（需鉴权）。
+
+请求 Body：
+
+```json
+{
+  "name": "客服评测集",
+  "description": "客服场景测试",
+  "agent_id": "...",
+  "cases": [
+    {"question": "如何退货？", "expected_keywords": ["退货", "7天"]},
+    {"question": "保修期多久？", "expected_keywords": ["保修", "1年"]}
+  ]
+}
+```
+
+响应示例：
+
+```json
+{
+  "id": "ds-001",
+  "name": "客服评测集",
+  "description": "客服场景测试",
+  "agent_id": "...",
+  "cases": [...],
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+#### GET `/eval/datasets/{id}`
+
+获取数据集详情（需鉴权）。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 数据集 ID |
+
+#### DELETE `/eval/datasets/{id}`
+
+删除数据集（需鉴权）。
+
+#### POST `/eval/datasets/{id}/run`
+
+触发评测执行（需鉴权）。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 数据集 ID |
+
+响应示例：
+
+```json
+{
+  "id": "res-001",
+  "dataset_id": "ds-001",
+  "agent_id": "...",
+  "status": "running",
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+#### GET `/eval/results`
+
+获取评测结果列表（需鉴权）。
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| dataset_id | UUID | 否 | 按数据集过滤 |
+
+#### GET `/eval/results/{id}`
+
+获取评测结果详情（需鉴权）。
+
+响应示例：
+
+```json
+{
+  "id": "res-001",
+  "dataset_id": "ds-001",
+  "agent_id": "...",
+  "status": "completed",
+  "total_cases": 10,
+  "passed_cases": 8,
+  "accuracy": 0.8,
+  "avg_duration_ms": 1200,
+  "details": [
+    {
+      "question": "如何退货？",
+      "answer": "...",
+      "expected_keywords": ["退货", "7天"],
+      "matched_keywords": ["退货"],
+      "passed": true,
+      "duration_ms": 1100
+    }
+  ],
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+### 工作流 API
+
+#### GET `/workflows`
+
+获取工作流列表。
+
+响应示例：
+
+```json
+[
+  {
+    "id": "wf-001",
+    "name": "客服处理流程",
+    "description": "客户问题分类处理",
+    "status": "published",
+    "created_at": "2026-06-21T10:00:00",
+    "updated_at": "2026-06-21T10:00:00"
+  }
+]
+```
+
+#### POST `/workflows`
+
+创建工作流。
+
+请求 Body：
+
+```json
+{
+  "name": "客服处理流程",
+  "description": "客户问题分类处理",
+  "nodes": [
+    {"id": "n1", "type": "input", "label": "用户输入", "config": {}},
+    {"id": "n2", "type": "agent", "label": "客服智能体", "config": {"agent_id": "..."}}
+  ],
+  "edges": [
+    {"source": "n1", "target": "n2"}
+  ]
+}
+```
+
+响应示例：
+
+```json
+{
+  "id": "wf-001",
+  "name": "客服处理流程",
+  "description": "客户问题分类处理",
+  "nodes": [...],
+  "edges": [...],
+  "status": "draft",
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+#### GET `/workflows/{id}`
+
+获取工作流详情。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 工作流 ID |
+
+#### PUT `/workflows/{id}`
+
+更新工作流。请求 Body 与创建相同，所有字段可选。
+
+#### DELETE `/workflows/{id}`
+
+删除工作流。
+
+#### POST `/workflows/{id}/publish`
+
+发布工作流，发布后状态变为 `published`。
+
+响应示例：
+
+```json
+{
+  "id": "wf-001",
+  "status": "published",
+  "updated_at": "2026-06-21T10:05:00"
+}
+```
+
+#### POST `/workflows/run`
+
+执行工作流。
+
+请求 Body：
+
+```json
+{
+  "workflow_id": "wf-001",
+  "input": "我的订单 10086 发货了吗？"
+}
+```
+
+响应示例：
+
+```json
+{
+  "id": "run-001",
+  "workflow_id": "wf-001",
+  "status": "completed",
+  "output": "您的订单已发货...",
+  "duration_ms": 2500,
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+#### GET `/workflows/runs`
+
+获取工作流执行记录列表。
+
+响应示例：
+
+```json
+[
+  {
+    "id": "run-001",
+    "workflow_id": "wf-001",
+    "status": "completed",
+    "input": "...",
+    "output": "...",
+    "duration_ms": 2500,
+    "created_at": "2026-06-21T10:00:00"
+  }
+]
+```
+
+#### GET `/workflows/runs/{id}`
+
+获取执行记录详情，包含各节点执行结果。
+
+响应示例：
+
+```json
+{
+  "id": "run-001",
+  "workflow_id": "wf-001",
+  "status": "completed",
+  "input": "...",
+  "output": "...",
+  "node_results": [
+    {"node_id": "n1", "status": "completed", "output": "...", "duration_ms": 100},
+    {"node_id": "n2", "status": "completed", "output": "...", "duration_ms": 2400}
+  ],
+  "duration_ms": 2500,
+  "created_at": "2026-06-21T10:00:00"
+}
+```
+
+### RAG 调优 API
+
+#### GET `/rag-tuning/configs`
+
+获取所有知识库的 RAG 配置。
+
+响应示例：
+
+```json
+[
+  {
+    "id": "rc-001",
+    "knowledge_base_id": "...",
+    "chunk_size": 500,
+    "chunk_overlap": 50,
+    "top_k": 5,
+    "score_threshold": 0.3,
+    "retrieval_weight_vector": 0.7,
+    "retrieval_weight_lexical": 0.3
+  }
+]
+```
+
+#### GET `/rag-tuning/configs/{kb_id}`
+
+获取指定知识库的 RAG 配置。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| kb_id | UUID | 知识库 ID |
+
+#### PUT `/rag-tuning/configs/{kb_id}`
+
+更新指定知识库的 RAG 配置。
+
+请求 Body：
+
+```json
+{
+  "chunk_size": 800,
+  "chunk_overlap": 100,
+  "top_k": 10,
+  "score_threshold": 0.5,
+  "retrieval_weight_vector": 0.8,
+  "retrieval_weight_lexical": 0.2
+}
+```
+
+| 字段 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| chunk_size | integer | 切块大小 | 500 |
+| chunk_overlap | integer | 切块重叠 | 50 |
+| top_k | integer | 检索数量 | 5 |
+| score_threshold | float | 相似度阈值 | 0.3 |
+| retrieval_weight_vector | float | 向量权重 | 0.7 |
+| retrieval_weight_lexical | float | 关键词权重 | 0.3 |
+
+#### POST `/rag-tuning/test`
+
+检索测试，按当前配置进行检索并返回结果。
+
+请求 Body：
+
+```json
+{
+  "knowledge_base_id": "...",
+  "query": "如何申请售后？",
+  "top_k": 5,
+  "score_threshold": 0.3
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| knowledge_base_id | UUID | 是 | 知识库 ID |
+| query | string | 是 | 查询文本 |
+| top_k | integer | 否 | 检索数量，覆盖配置 |
+| score_threshold | float | 否 | 相似度阈值，覆盖配置 |
+
+响应示例：
+
+```json
+{
+  "query": "如何申请售后？",
+  "results": [
+    {
+      "content": "售后申请流程...",
+      "score": 0.85,
+      "document_id": "...",
+      "source": "after_sales.pdf"
+    }
+  ],
+  "total": 1
+}
+```
+
+### WebSocket API
+
+#### WS `/ws/chat`
+
+WebSocket 聊天端点，支持流式输出和实时步骤推送。
+
+连接地址：
+
+```text
+ws://localhost:8000/ws/chat
+```
+
+客户端发送消息格式：
+
+```json
+{
+  "agent_id": "...",
+  "input": "你好",
+  "messages": [
+    {"role": "user", "content": "之前的对话..."}
+  ],
+  "file_content": ""
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| agent_id | UUID | 是 | 智能体 ID |
+| input | string | 是 | 用户输入 |
+| messages | array | 否 | 历史消息列表 |
+| file_content | string | 否 | 上传文件提取的文本内容 |
+
+服务端推送事件类型：
+
+| 事件 | 说明 |
+|------|------|
+| steps | 执行步骤更新 |
+| citations | 引用来源 |
+| token | 流式输出的 token |
+| error | 错误信息 |
+| done | 执行完成 |
+
+`steps` 事件示例：
+
+```json
+{
+  "event": "steps",
+  "data": {
+    "name": "retrieval",
+    "status": "completed",
+    "detail": "检索到 3 条相关文档"
+  }
+}
+```
+
+`token` 事件示例：
+
+```json
+{
+  "event": "token",
+  "data": {"content": "您"}
+}
+```
+
+`done` 事件示例：
+
+```json
+{
+  "event": "done",
+  "data": {
+    "answer": "完整回答内容",
+    "citations": [],
+    "run_id": "..."
+  }
+}
+```
+
+`error` 事件示例：
+
+```json
+{
+  "event": "error",
+  "data": {"message": "智能体执行失败"}
+}
+```
+
+### 健康检查增强
+
+#### GET `/health/stats`
+
+获取系统总览统计信息，包含版本号、鉴权状态及各资源数量。
+
+响应示例：
+
+```json
+{
+  "status": "ok",
+  "app": "AgentPilot",
+  "version": "3.0.0",
+  "auth_enabled": true,
+  "counts": {
+    "agents": 10,
+    "knowledge_bases": 5,
+    "documents": 120,
+    "tools": 8,
+    "conversations": 350,
+    "workflows": 3,
+    "eval_datasets": 2
+  }
+}
+```

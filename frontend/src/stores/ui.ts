@@ -2,7 +2,8 @@ import { defineStore } from "pinia";
 
 export const useUiStore = defineStore("ui", {
   state: () => ({
-    theme: (localStorage.getItem("agentpilot-theme") as "light" | "dark" | null) ?? "light"
+    theme: (localStorage.getItem("agentpilot-theme") as "light" | "dark" | null) ?? "light",
+    locale: (localStorage.getItem("agentpilot-locale") as "zh" | "en" | null) ?? "zh"
   }),
   actions: {
     toggleTheme() {
@@ -12,6 +13,10 @@ export const useUiStore = defineStore("ui", {
     },
     initTheme() {
       document.body.setAttribute("data-theme", this.theme);
+    },
+    toggleLocale() {
+      this.locale = this.locale === "zh" ? "en" : "zh";
+      localStorage.setItem("agentpilot-locale", this.locale);
     }
   }
 });

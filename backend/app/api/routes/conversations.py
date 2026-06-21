@@ -1,34 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 
 from app.core.deps import get_optional_user
-from app.repositories.conversations import conversation_store
+from app.core.config import settings
+from app.repositories.conversations import get_conversation_store
 from app.schemas.auth import UserInfo
+from app.schemas.conversations import ConversationMessage, ConversationUpsert
 
 router = APIRouter()
-
-
-class ConversationMessage(BaseModel):
-    role: str
-    content: str
-
-
-class ConversationUpsert(BaseModel):
-    agent_id: str
-    session_id: str = Field(min_length=1, max_length=80)
-    title: str = ""
-    messages: list[ConversationMessage] = Field(default_factory=list)
-    summary: str = ""
-    summary_to_turn: int = 0
 
 
 @router.get("")
 async def list_conversations(
     agent_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
     _user: UserInfo | None = Depends(get_optional_user),
 ) -> list[dict]:
     """查询会话列表，支持按 agent_id 过滤。"""
-    return await conversation_store.list_conversations(agent_id=agent_id)
+    return await conversation_store.list_conversations(agent_id=agent_id, limit=limit, offset=offset)
 
 
 @router.get("/search")
@@ -77,6 +66,8 @@ async def delete_conversation(
     _user: UserInfo | None = Depends(get_optional_user),
 ) -> None:
     """删除会话。"""
+    if settings.auth_enabled and not _user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     deleted = await conversation_store.delete_conversation(conversation_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")

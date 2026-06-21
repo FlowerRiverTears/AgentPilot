@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from io import BytesIO
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,10 +16,11 @@ from app.rag.pipeline import rag_pipeline
 from app.rag.document_loader import ExtractedImage, ParsedDocument
 from app.rag.relevance import lexical_relevance
 from app.rag.text_quality import is_readable_text
+from app.repositories.base import maybe_uuid, to_uuid
 from app.schemas.agents import AgentCreate, AgentRead, AgentRunDetail, AgentRunSummary, AgentUpdate
 from app.schemas.knowledge import KnowledgeBaseCreate, KnowledgeBaseRead, RetrievedChunk
-from app.vector.embeddings import embedding_service
-from app.llm.gateway import llm_gateway
+from app.vector.embeddings import get_embedding_service
+from app.llm.gateway import get_llm_gateway
 
 
 class DatabaseStore:
@@ -31,10 +32,10 @@ class DatabaseStore:
             await self._backfill_agent_model_configs(session)
             await self._cleanup_unreadable_chunks(session)
 
-    async def list_agents(self) -> list[AgentRead]:
+    async def list_agents(self, limit: int = 50, offset: int = 0) -> list[AgentRead]:
         async with AsyncSessionLocal() as session:
             result = await session.execute(
-                select(Agent).where(Agent.status != "deleted").order_by(Agent.created_at.desc())
+                select(Agent).where(Agent.status != "deleted").order_by(Agent.created_at.desc()).offset(offset).limit(limit)
             )
             return [self._agent_to_read(agent) for agent in result.scalars().all()]
 
@@ -66,7 +67,7 @@ class DatabaseStore:
             return self._agent_to_read(agent)
 
     async def update_agent(self, agent_id: str, payload: AgentUpdate) -> AgentRead | None:
-        agent_uuid = self._maybe_uuid(agent_id)
+        agent_uuid = maybe_uuid(agent_id)
         if not agent_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -96,7 +97,7 @@ class DatabaseStore:
             return self._agent_to_read(agent)
 
     async def set_agent_status(self, agent_id: str, status: str) -> AgentRead | None:
-        agent_uuid = self._maybe_uuid(agent_id)
+        agent_uuid = maybe_uuid(agent_id)
         if not agent_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -109,7 +110,7 @@ class DatabaseStore:
             return self._agent_to_read(agent)
 
     async def delete_agent(self, agent_id: str) -> bool:
-        agent_uuid = self._maybe_uuid(agent_id)
+        agent_uuid = maybe_uuid(agent_id)
         if not agent_uuid:
             return False
         async with AsyncSessionLocal() as session:
@@ -121,7 +122,7 @@ class DatabaseStore:
             return True
 
     async def duplicate_agent(self, agent_id: str) -> AgentRead | None:
-        agent_uuid = self._maybe_uuid(agent_id)
+        agent_uuid = maybe_uuid(agent_id)
         if not agent_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -142,7 +143,7 @@ class DatabaseStore:
             return self._agent_to_read(copy)
 
     async def get_agent(self, agent_id: str) -> AgentRead | None:
-        agent_uuid = self._maybe_uuid(agent_id)
+        agent_uuid = maybe_uuid(agent_id)
         if not agent_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -151,13 +152,15 @@ class DatabaseStore:
                 return None
             return self._agent_to_read(agent)
 
-    async def list_knowledge_bases(self) -> list[KnowledgeBaseRead]:
+    async def list_knowledge_bases(self, limit: int = 50, offset: int = 0) -> list[KnowledgeBaseRead]:
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(KnowledgeBase, func.count(Document.id))
                 .outerjoin(Document, Document.knowledge_base_id == KnowledgeBase.id)
                 .group_by(KnowledgeBase.id)
                 .order_by(KnowledgeBase.created_at.desc())
+                .offset(offset)
+                .limit(limit)
             )
             rows = await session.execute(stmt)
             return [self._kb_to_read(kb, count) for kb, count in rows.all()]
@@ -171,7 +174,7 @@ class DatabaseStore:
             return self._kb_to_read(kb, 0)
 
     async def delete_knowledge_base(self, kb_id: str) -> bool:
-        kb_uuid = self._maybe_uuid(kb_id)
+        kb_uuid = maybe_uuid(kb_id)
         if not kb_uuid:
             return False
         async with AsyncSessionLocal() as session:
@@ -204,7 +207,7 @@ class DatabaseStore:
 
     async def list_documents(self, kb_id: str) -> list[dict]:
         """列出知识库下的所有文档。"""
-        kb_uuid = self._maybe_uuid(kb_id)
+        kb_uuid = maybe_uuid(kb_id)
         if not kb_uuid:
             return []
         async with AsyncSessionLocal() as session:
@@ -226,7 +229,7 @@ class DatabaseStore:
 
     async def delete_document(self, kb_id: str, doc_id: str) -> bool:
         """删除单个文档及其所有切片。"""
-        doc_uuid = self._maybe_uuid(doc_id)
+        doc_uuid = maybe_uuid(doc_id)
         if not doc_uuid:
             return False
         async with AsyncSessionLocal() as session:
@@ -239,7 +242,7 @@ class DatabaseStore:
             return True
 
     async def add_document(self, kb_id: str, filename: str, text: str) -> list[RetrievedChunk]:
-        kb_uuid = self._maybe_uuid(kb_id)
+        kb_uuid = maybe_uuid(kb_id)
         if not kb_uuid:
             return []
         chunks = rag_pipeline.build_chunks(filename, text)
@@ -254,9 +257,13 @@ class DatabaseStore:
             session.add(document)
             await session.flush()
 
+            # Batch embed all chunks in parallel
+            import asyncio
+            texts = [chunk.content for chunk in chunks]
+            embeddings = await asyncio.gather(*[get_embedding_service().embed_text(t) for t in texts])
+
             stored_chunks: list[RetrievedChunk] = []
-            for chunk in chunks:
-                embedding = await embedding_service.embed_text(chunk.content)
+            for chunk, embedding in zip(chunks, embeddings):
                 row = DocumentChunk(
                     document_id=document.id,
                     content=chunk.content,
@@ -267,7 +274,6 @@ class DatabaseStore:
                     page_number=chunk.page_number,
                     token_count=chunk.token_count,
                     chunk_metadata=chunk.metadata,
-                    image_url=chunk.image_url,
                     embedding=embedding,
                 )
                 session.add(row)
@@ -280,7 +286,7 @@ class DatabaseStore:
     async def add_document_multimodal(
         self, kb_id: str, filename: str, parsed: ParsedDocument
     ) -> list[RetrievedChunk]:
-        kb_uuid = self._maybe_uuid(kb_id)
+        kb_uuid = maybe_uuid(kb_id)
         if not kb_uuid:
             return []
 
@@ -310,17 +316,23 @@ class DatabaseStore:
             image_by_chunk_id = {
                 rag_pipeline.build_image_chunk_id(img): img for img in parsed.images
             }
-            for chunk in all_chunks:
-                image_url = image_map.get(chunk.chunk_id, "")
 
+            # Batch embed all chunks in parallel
+            import asyncio
+            async def _embed_chunk(chunk):
                 if chunk.content_type == "image":
                     img_data = image_by_chunk_id.get(chunk.chunk_id)
-                    if img_data and embedding_service.multimodal_available:
-                        embedding = await embedding_service.embed_image(img_data.image_bytes)
+                    if img_data and get_embedding_service().multimodal_available:
+                        return await get_embedding_service().embed_image(img_data.image_bytes)
                     else:
-                        embedding = await embedding_service.embed_text(chunk.content)
+                        return await get_embedding_service().embed_text(chunk.content)
                 else:
-                    embedding = await embedding_service.embed_text(chunk.content)
+                    return await get_embedding_service().embed_text(chunk.content)
+
+            embeddings = await asyncio.gather(*[_embed_chunk(c) for c in all_chunks])
+
+            for chunk, embedding in zip(all_chunks, embeddings):
+                image_url = image_map.get(chunk.chunk_id, "")
 
                 row = DocumentChunk(
                     document_id=document.id,
@@ -384,10 +396,10 @@ class DatabaseStore:
         return result
 
     async def retrieve_chunks(self, kb_id: str, query: str, top_k: int = 5) -> list[RetrievedChunk]:
-        kb_uuid = self._maybe_uuid(kb_id)
+        kb_uuid = maybe_uuid(kb_id)
         if not kb_uuid:
             return []
-        query_embedding = await embedding_service.embed_text(query)
+        query_embedding = await get_embedding_service().embed_text(query)
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(
@@ -431,10 +443,10 @@ class DatabaseStore:
 
     async def retrieve_by_image(self, kb_id: str, image_bytes: bytes, top_k: int = 5) -> list[RetrievedChunk]:
         """跨模态检索：用图片查询知识库中的文本块和图片块。"""
-        kb_uuid = self._maybe_uuid(kb_id)
+        kb_uuid = maybe_uuid(kb_id)
         if not kb_uuid:
             return []
-        query_embedding = await embedding_service.embed_image(image_bytes)
+        query_embedding = await get_embedding_service().embed_image(image_bytes)
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(
@@ -468,36 +480,79 @@ class DatabaseStore:
             chunks.sort(key=lambda item: item.score, reverse=True)
             return chunks[:top_k]
 
+    async def retrieve_chunks_multi_kb(self, kb_ids: list[str], query: str, top_k: int = 5) -> list[RetrievedChunk]:
+        """Retrieve chunks across multiple knowledge bases in a single query."""
+        if not kb_ids:
+            return []
+        kb_uuids = [uid for uid in (maybe_uuid(kb_id) for kb_id in kb_ids) if uid]
+        if not kb_uuids:
+            return []
+        query_embedding = await get_embedding_service().embed_text(query)
+        async with AsyncSessionLocal() as session:
+            # Get document IDs for all knowledge bases
+            doc_result = await session.execute(
+                select(Document.id).where(Document.knowledge_base_id.in_(kb_uuids))
+            )
+            doc_ids = [row[0] for row in doc_result.all()]
+            if not doc_ids:
+                return []
+            # Single vector search across all documents
+            stmt = (
+                select(
+                    DocumentChunk,
+                    DocumentChunk.embedding.cosine_distance(query_embedding).label("distance"),
+                )
+                .where(DocumentChunk.document_id.in_(doc_ids))
+                .order_by(text("distance ASC"))
+            )
+            rows = await session.execute(stmt)
+            chunks: list[RetrievedChunk] = []
+            seen_contents: set[str] = set()
+            for row, distance in rows.all():
+                vector_score = round(1.0 - distance, 6)
+                lexical_score = lexical_relevance(query, row.content)
+                score = max(vector_score, lexical_score)
+                if row.content_type == "text":
+                    if (
+                        vector_score < settings.retrieval_min_score
+                        and lexical_score < settings.retrieval_min_lexical_score
+                    ) or not is_readable_text(row.content):
+                        continue
+                else:
+                    if vector_score < settings.retrieval_min_score:
+                        continue
+                normalized_content = " ".join(row.content.split())
+                if normalized_content in seen_contents:
+                    continue
+                seen_contents.add(normalized_content)
+                chunks.append(
+                    self._chunk_to_retrieved(
+                        row,
+                        score=score,
+                        vector_score=vector_score,
+                        lexical_score=lexical_score,
+                    )
+                )
+            chunks.sort(key=lambda item: item.score, reverse=True)
+            return chunks[:top_k]
+
     async def retrieve_for_agent(self, agent_id: str, query: str, top_k: int = 3) -> list[RetrievedChunk]:
         agent = await self.get_agent(agent_id)
         if not agent:
             return []
 
-        all_chunks: list[RetrievedChunk] = []
         async with AsyncSessionLocal() as session:
-            agent_uuid = self._maybe_uuid(agent_id)
+            agent_uuid = maybe_uuid(agent_id)
             if not agent_uuid:
                 return []
             agent_row = await session.get(Agent, agent_uuid)
             if not agent_row:
                 return []
 
-            # 遍历所有绑定的知识库，分别执行检索
             kb_ids = agent_row.config.get("knowledge_base_ids", [])
-            for kb_id in kb_ids:
-                kb_chunks = await self.retrieve_chunks(kb_id, query, top_k=top_k)
-                all_chunks.extend(kb_chunks)
+            all_chunks = await self.retrieve_chunks_multi_kb(kb_ids, query, top_k=top_k)
 
-        # 合并后按 score 排序，按 chunk_id 去重，取 top_k
-        all_chunks.sort(key=lambda item: item.score, reverse=True)
-        deduped: list[RetrievedChunk] = []
-        seen_chunk_ids: set[str] = set()
-        for chunk in all_chunks:
-            if chunk.chunk_id in seen_chunk_ids:
-                continue
-            seen_chunk_ids.add(chunk.chunk_id)
-            deduped.append(chunk)
-        return deduped[:top_k]
+        return all_chunks
 
     async def create_run(
         self,
@@ -525,7 +580,7 @@ class DatabaseStore:
             usage["error"] = error
         async with AsyncSessionLocal() as session:
             run = AgentRun(
-                agent_id=self._uuid(agent_id),
+                agent_id=to_uuid(agent_id),
                 status=status,
                 input=user_input,
                 output=answer,
@@ -560,12 +615,13 @@ class DatabaseStore:
                 "usage": usage,
             }
 
-    async def list_runs(self, limit: int = 50) -> list[AgentRunSummary]:
+    async def list_runs(self, limit: int = 50, offset: int = 0) -> list[AgentRunSummary]:
         async with AsyncSessionLocal() as session:
             stmt = (
                 select(AgentRun, Agent.name)
                 .outerjoin(Agent, Agent.id == AgentRun.agent_id)
                 .order_by(AgentRun.created_at.desc())
+                .offset(offset)
                 .limit(limit)
             )
             rows = await session.execute(stmt)
@@ -573,6 +629,8 @@ class DatabaseStore:
 
     async def get_stats(self) -> dict:
         """总览统计数据：各资源数量与鉴权状态。"""
+        from app.models import EvalDataset, EvalResult, Workflow, WorkflowRun
+
         async with AsyncSessionLocal() as session:
             agents_total = await session.scalar(
                 select(func.count()).select_from(Agent).where(Agent.status != "deleted")
@@ -592,6 +650,10 @@ class DatabaseStore:
             feedback_dislikes = await session.scalar(
                 select(func.count()).select_from(Feedback).where(Feedback.rating == "dislike")
             )
+            eval_datasets = await session.scalar(select(func.count()).select_from(EvalDataset))
+            eval_results = await session.scalar(select(func.count()).select_from(EvalResult))
+            workflows = await session.scalar(select(func.count()).select_from(Workflow))
+            workflow_runs = await session.scalar(select(func.count()).select_from(WorkflowRun))
             return {
                 "agents_total": int(agents_total or 0),
                 "agents_published": int(agents_published or 0),
@@ -603,10 +665,14 @@ class DatabaseStore:
                 "conversations": int(conversations or 0),
                 "feedback_likes": int(feedback_likes or 0),
                 "feedback_dislikes": int(feedback_dislikes or 0),
+                "eval_datasets": int(eval_datasets or 0),
+                "eval_results": int(eval_results or 0),
+                "workflows": int(workflows or 0),
+                "workflow_runs": int(workflow_runs or 0),
             }
 
     async def get_run(self, run_id: str) -> AgentRunDetail | None:
-        run_uuid = self._maybe_uuid(run_id)
+        run_uuid = maybe_uuid(run_id)
         if not run_uuid:
             return None
         async with AsyncSessionLocal() as session:
@@ -627,8 +693,8 @@ class DatabaseStore:
         if kb_count and agent_count and tool_count:
             return
 
-        await llm_gateway.ensure_defaults()
-        model_configs = await llm_gateway.list_configs()
+        await get_llm_gateway().ensure_defaults()
+        model_configs = await get_llm_gateway().list_configs()
         default_model_config = next((config for config in model_configs if config.is_default), None)
         default_model_config_id = default_model_config.id if default_model_config else None
 
@@ -653,7 +719,7 @@ class DatabaseStore:
                 session.add(document)
                 await session.flush()
                 for chunk in rag_pipeline.build_chunks(document.filename, content):
-                    embedding = await embedding_service.embed_text(chunk.content)
+                    embedding = await get_embedding_service().embed_text(chunk.content)
                     session.add(
                         DocumentChunk(
                             document_id=document.id,
@@ -759,7 +825,7 @@ class DatabaseStore:
         await session.commit()
 
     async def _backfill_agent_model_configs(self, session: AsyncSession) -> None:
-        default_config = await llm_gateway.get_config()
+        default_config = await get_llm_gateway().get_config()
         agents = (await session.execute(select(Agent).where(Agent.status != "deleted"))).scalars().all()
         changed = False
         for agent in agents:
@@ -813,10 +879,10 @@ class DatabaseStore:
 
     async def _resolve_model_config_id(self, model_config_id: str | None) -> str:
         if not model_config_id:
-            default_config = await llm_gateway.get_config()
+            default_config = await get_llm_gateway().get_config()
             return default_config.id
-        if not await llm_gateway.get_config_by_id(model_config_id):
-            default_config = await llm_gateway.get_config()
+        if not await get_llm_gateway().get_config_by_id(model_config_id):
+            default_config = await get_llm_gateway().get_config()
             return default_config.id
         return model_config_id
 
@@ -831,6 +897,8 @@ class DatabaseStore:
             model_config_id=config.get("model_config_id"),
             knowledge_base_ids=list(config.get("knowledge_base_ids", [])),
             tool_ids=list(config.get("tool_ids", [])),
+            sub_agent_ids=list(config.get("sub_agent_ids", [])),
+            tool_chain=list(config.get("tool_chain", [])),
             status=agent.status,
         )
 
@@ -899,14 +967,14 @@ class DatabaseStore:
             tool_results=list(usage.get("tool_results", [])),
         )
 
-    def _uuid(self, value: str) -> UUID:
-        return UUID(value)
-
-    def _maybe_uuid(self, value: str) -> UUID | None:
-        try:
-            return UUID(value)
-        except ValueError:
-            return None
 
 
-store = DatabaseStore()
+_store = None
+
+
+def get_store() -> "DatabaseStore":
+    """Lazy-initialized database store singleton."""
+    global _store
+    if _store is None:
+        _store = DatabaseStore()
+    return _store
